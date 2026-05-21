@@ -13,7 +13,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi import Request
 from pydantic import BaseModel
-from core import DocumentAnalyzer, AnalysisResult, ReportGenerator
+from core import DocumentAnalyzer, AnalysisResult, OllamaClient, OllamaModelConfig, PipelineConfig
+from config import ollama_config, pipeline_config
 
 
 # In-memory task storage
@@ -36,7 +37,17 @@ def get_log_callback(task_id: str):
     return log
 
 
-def run_folder_analysis_task(task_id: str, source: str, output: str):
+def run_folder_analysis_task(
+    task_id: str, 
+    source: str, 
+    output: str,
+    translate_model: Optional[str] = None,
+    annotate_model: Optional[str] = None,
+    review_model: Optional[str] = None,
+    enable_translation: Optional[bool] = None,
+    enable_annotation: Optional[bool] = None,
+    enable_review: Optional[bool] = None
+):
     task_created_files[task_id] = []
     try:
         tasks[task_id]["status"] = "running"
@@ -48,8 +59,32 @@ def run_folder_analysis_task(task_id: str, source: str, output: str):
         def cancel_check():
             return task_cancelled.get(task_id, False)
 
-        analyzer = DocumentAnalyzer(log_callback=get_log_callback(task_id), cancel_check=cancel_check)
-        results, created_files = analyzer.run_folder_analysis(source, output_path)
+        # Настройка конфигурации моделей
+        model_config = OllamaModelConfig(
+            translate_model=translate_model or ollama_config.translate_model,
+            annotate_model=annotate_model or ollama_config.annotate_model,
+            review_model=review_model or ollama_config.review_model
+        )
+        
+        ollama_client = OllamaClient(
+            base_url=ollama_config.base_url,
+            config=model_config
+        )
+        
+        # Настройка pipeline
+        pipe_config = PipelineConfig(
+            enable_translation=enable_translation if enable_translation is not None else pipeline_config.enable_translation,
+            enable_annotation=enable_annotation if enable_annotation is not None else pipeline_config.enable_annotation,
+            enable_review=enable_review if enable_review is not None else pipeline_config.enable_review
+        )
+
+        analyzer = DocumentAnalyzer(
+            ollama_client=ollama_client,
+            log_callback=get_log_callback(task_id),
+            cancel_check=cancel_check,
+            config=pipe_config
+        )
+        results, created_files = analyzer.analyze_folder(source, output_path)
         task_created_files[task_id] = created_files
 
         if task_cancelled.get(task_id, False):
@@ -67,7 +102,7 @@ def run_folder_analysis_task(task_id: str, source: str, output: str):
         get_log_callback(task_id)("\nРабота завершена")
 
         report_file = output_path / "результаты_анализа.txt"
-        ReportGenerator.save_results(results, report_file, source)
+        _save_results(results, report_file, source)
     except Exception as e:
         if task_cancelled.get(task_id, False):
             _cleanup_task_files(task_id)
@@ -97,15 +132,48 @@ def _cleanup_task_files(task_id: str):
                 pass
 
 
-def run_single_file_task(task_id: str, file_path: Path, output_dir: Path):
+def _save_results(results, output_file: Path, source_folder: str):
+    """Сохранить результаты анализа в текстовый файл."""
+    from core import AnalysisResult
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write("РЕЗУЛЬТАТЫ МНОГОЭТАПНОГО АНАЛИЗА\n")
+        f.write(f"Источник: {source_folder}\n")
+        f.write("=" * 60 + "\n\n")
+        for i, r in enumerate(results, 1):
+            f.write(f"[{i}] {r.original_name}\n   -> {r.title}\n" + "-"*40 + "\n")
+
+
+def run_single_file_task(
+    task_id: str, 
+    file_path: Path, 
+    output_dir: Path,
+    translate_model: Optional[str] = None,
+    annotate_model: Optional[str] = None,
+    review_model: Optional[str] = None
+):
     try:
         tasks[task_id]["status"] = "running"
         output_dir.mkdir(parents=True, exist_ok=True)
         output_dirs[task_id] = output_dir
         source_folders[task_id] = str(file_path.parent)
 
-        analyzer = DocumentAnalyzer(log_callback=get_log_callback(task_id))
-        result = analyzer.run_single_file(file_path, output_dir)
+        # Настройка конфигурации моделей
+        model_config = OllamaModelConfig(
+            translate_model=translate_model or ollama_config.translate_model,
+            annotate_model=annotate_model or ollama_config.annotate_model,
+            review_model=review_model or ollama_config.review_model
+        )
+        
+        ollama_client = OllamaClient(
+            base_url=ollama_config.base_url,
+            config=model_config
+        )
+        
+        analyzer = DocumentAnalyzer(
+            ollama_client=ollama_client,
+            log_callback=get_log_callback(task_id)
+        )
+        result = analyzer.analyze_single_file(file_path, output_dir)
 
         task_results[task_id] = [{
             "file_name": result.file_name,
@@ -147,6 +215,19 @@ templates = Jinja2Templates(directory="templates")
 class AnalyzeFolderRequest(BaseModel):
     source_folder: str
     output_folder: str
+    translate_model: Optional[str] = None
+    annotate_model: Optional[str] = None
+    review_model: Optional[str] = None
+    enable_translation: Optional[bool] = None
+    enable_annotation: Optional[bool] = None
+    enable_review: Optional[bool] = None
+
+
+class AnalyzeFileRequest(BaseModel):
+    file_name: str
+    translate_model: Optional[str] = None
+    annotate_model: Optional[str] = None
+    review_model: Optional[str] = None
 
 
 class UpdateTitleRequest(BaseModel):
@@ -159,10 +240,18 @@ class RegenerateRequest(BaseModel):
     task_id: str
     file_name: str
     detailed: bool = False
+    translate_model: Optional[str] = None
+    annotate_model: Optional[str] = None
+    review_model: Optional[str] = None
 
 
 class CancelTaskRequest(BaseModel):
     task_id: str
+
+
+class GetModelsRequest(BaseModel):
+    """Запрос для получения доступных моделей."""
+    pass
 
 
 def sanitize_filename(name: str) -> str:
@@ -189,14 +278,22 @@ async def analyze_folder(req: AnalyzeFolderRequest, background_tasks: Background
     task_logs[task_id] = []
     task_results[task_id] = []
 
-    background_tasks.add_task(run_folder_analysis_task, task_id, source, output)
+    background_tasks.add_task(
+        run_folder_analysis_task,
+        task_id, source, output,
+        req.translate_model, req.annotate_model, req.review_model,
+        req.enable_translation, req.enable_annotation, req.enable_review
+    )
     return {"task_id": task_id, "status": "pending"}
 
 
 @app.post("/api/analyze-file")
 async def analyze_file(
     background_tasks: BackgroundTasks,
-    file: UploadFile = Form(...)
+    file: UploadFile = Form(...),
+    translate_model: Optional[str] = Form(None),
+    annotate_model: Optional[str] = Form(None),
+    review_model: Optional[str] = Form(None)
 ):
     allowed = {".docx", ".doc", ".pdf"}
     ext = Path(file.filename or "").suffix.lower()
@@ -219,7 +316,11 @@ async def analyze_file(
     task_results[task_id] = []
 
     output_dir = task_dir / "output"
-    background_tasks.add_task(run_single_file_task, task_id, file_path, output_dir)
+    background_tasks.add_task(
+        run_single_file_task,
+        task_id, file_path, output_dir,
+        translate_model, annotate_model, review_model
+    )
     return {"task_id": task_id, "status": "pending"}
 
 
@@ -231,6 +332,39 @@ async def cancel_task(req: CancelTaskRequest):
         raise HTTPException(status_code=404, detail="Задача не найдена")
     task_cancelled[task_id] = True
     return {"ok": True, "status": "cancelling"}
+
+
+@app.get("/api/models")
+async def get_available_models():
+    """Получить список доступных моделей из Ollama и текущую конфигурацию."""
+    ollama = OllamaClient()
+    available = ollama.get_available_models()
+    
+    return {
+        "available_models": available,
+        "current_config": {
+            "translate_model": ollama_config.translate_model,
+            "annotate_model": ollama_config.annotate_model,
+            "review_model": ollama_config.review_model,
+            "base_url": ollama_config.base_url,
+        },
+        "pipeline_config": {
+            "enable_translation": pipeline_config.enable_translation,
+            "enable_annotation": pipeline_config.enable_annotation,
+            "enable_review": pipeline_config.enable_review,
+        }
+    }
+
+
+@app.post("/api/test-connection")
+async def test_connection():
+    """Проверить подключение к Ollama."""
+    ollama = OllamaClient()
+    connected = ollama.check_connection()
+    return {
+        "connected": connected,
+        "base_url": ollama_config.base_url
+    }
 
 
 @app.get("/api/status/{task_id}")
@@ -265,11 +399,18 @@ async def regenerate_title(req: RegenerateRequest):
     if req.task_id not in task_results or req.task_id not in output_dirs:
         raise HTTPException(status_code=404, detail="Задача не найдена")
 
-    # Этап регенерации теперь тоже использует цепочку моделей
-    from core import OllamaClient, DocumentProcessor
-    processor = DocumentProcessor()
-    ollama = OllamaClient()
+    from core import OllamaClient, OllamaModelConfig
+    from config import ollama_config
     
+    # Настройка моделей
+    model_config = OllamaModelConfig(
+        translate_model=req.translate_model or ollama_config.translate_model,
+        annotate_model=req.annotate_model or ollama_config.annotate_model,
+        review_model=req.review_model or ollama_config.review_model
+    )
+
+    ollama = OllamaClient(base_url=ollama_config.base_url, config=model_config)
+
     filename = sanitize_filename(req.file_name)
     base = output_dirs[req.task_id]
     file_path = base / filename
@@ -277,12 +418,15 @@ async def regenerate_title(req: RegenerateRequest):
     if not file_path.exists():
          raise HTTPException(status_code=404, detail="Файл не найден")
          
+    # Используем DocumentProcessor напрямую для чтения текста
+    from core import DocumentProcessor
+    processor = DocumentProcessor()
     text = processor.read_text(file_path)
     
     # Полный цикл: Перевод -> Аннотация -> Проверка
-    working_text = ollama.translate_if_needed(text)
-    initial = ollama.generate_initial_annotation(working_text, filename)
-    final_title = ollama.review_and_finalize(working_text, initial)
+    working_text = ollama.translate_text(text)
+    initial = ollama.generate_annotation(working_text, filename)
+    final_title = ollama.review_annotation(working_text, initial)
     
     for r in task_results[req.task_id]:
         if r["file_name"] == filename or r["original_name"] == req.file_name:

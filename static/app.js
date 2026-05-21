@@ -5,6 +5,104 @@ let currentResults = [];
 let currentFilter = 'all';
 let sortColumn = 'original_name';
 let sortAsc = true;
+let availableModels = [];
+let currentModelConfig = {};
+let currentPipelineConfig = {};
+
+// Initialize app
+async function initializeApp() {
+  await loadModels();
+  await checkConnection();
+}
+
+// Load available models
+async function loadModels() {
+  try {
+    const res = await fetch(`${API}/models`);
+    const data = await res.json();
+    
+    availableModels = data.available_models || [];
+    currentModelConfig = data.current_config || {};
+    currentPipelineConfig = data.pipeline_config || {};
+    
+    // Populate model selectors
+    const populateSelect = (selectId, currentValue) => {
+      const select = document.getElementById(selectId);
+      select.innerHTML = '';
+      availableModels.forEach(model => {
+        const option = document.createElement('option');
+        option.value = model;
+        option.textContent = model;
+        if (model === currentValue) option.selected = true;
+        select.appendChild(option);
+      });
+      // Add current model if not in list
+      if (currentValue && !availableModels.includes(currentValue)) {
+        const option = document.createElement('option');
+        option.value = currentValue;
+        option.textContent = `${currentValue} (текущая)`;
+        option.selected = true;
+        select.appendChild(option);
+      }
+    };
+
+    populateSelect('translateModel', currentModelConfig.translate_model);
+    populateSelect('annotateModel', currentModelConfig.annotate_model);
+    populateSelect('reviewModel', currentModelConfig.review_model);
+    
+    // Set pipeline config
+    document.getElementById('enableTranslation').checked = currentPipelineConfig.enable_translation !== false;
+    document.getElementById('enableAnnotation').checked = currentPipelineConfig.enable_annotation !== false;
+    document.getElementById('enableReview').checked = currentPipelineConfig.enable_review !== false;
+    
+  } catch (err) {
+    console.error('Ошибка загрузки моделей:', err);
+    // Fallback defaults
+    document.getElementById('translateModel').innerHTML = '<option value="glm-4.7-flash:latest">glm-4.7-flash:latest</option>';
+    document.getElementById('annotateModel').innerHTML = '<option value="qwen3:235b">qwen3:235b</option>';
+    document.getElementById('reviewModel').innerHTML = '<option value="deepseek-r1:32b">deepseek-r1:32b</option>';
+  }
+}
+
+// Check connection
+async function checkConnection() {
+  const statusDiv = document.getElementById('connectionStatus');
+  try {
+    const res = await fetch(`${API}/test-connection`);
+    const data = await res.json();
+    if (data.connected) {
+      statusDiv.innerHTML = '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Ollama подключён</span>';
+    } else {
+      statusDiv.innerHTML = '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Ollama недоступен</span>';
+    }
+  } catch (err) {
+    statusDiv.innerHTML = '<span class="badge bg-warning"><i class="bi bi-exclamation-triangle me-1"></i>Невозможно проверить</span>';
+  }
+}
+
+// Refresh models
+document.getElementById('refreshModels').onclick = async () => {
+  const btn = document.getElementById('refreshModels');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Загрузка...';
+  await loadModels();
+  btn.disabled = false;
+  btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Обновить список моделей';
+};
+
+// Reset models to defaults
+document.getElementById('resetModels').onclick = () => {
+  document.getElementById('translateModel').selectedIndex = 0;
+  document.getElementById('annotateModel').selectedIndex = 0;
+  document.getElementById('reviewModel').selectedIndex = 0;
+};
+
+// Toggle model settings icon
+document.querySelector('[data-bs-toggle="collapse"][data-bs-target="#modelSettings"]').addEventListener('click', () => {
+  const icon = document.getElementById('modelSettingsIcon');
+  icon.classList.toggle('bi-chevron-down');
+  icon.classList.toggle('bi-chevron-up');
+});
 
 // Mode switching
 document.querySelectorAll('[data-mode]').forEach(btn => {
@@ -113,7 +211,16 @@ document.getElementById('runFolder').onclick = async () => {
     const res = await fetch(`${API}/analyze-folder`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source_folder: source, output_folder: output })
+      body: JSON.stringify({
+        source_folder: source,
+        output_folder: output,
+        translate_model: document.getElementById('translateModel').value || null,
+        annotate_model: document.getElementById('annotateModel').value || null,
+        review_model: document.getElementById('reviewModel').value || null,
+        enable_translation: document.getElementById('enableTranslation').checked,
+        enable_annotation: document.getElementById('enableAnnotation').checked,
+        enable_review: document.getElementById('enableReview').checked
+      })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Ошибка');
@@ -224,6 +331,9 @@ async function handleFile(file) {
 
   const fd = new FormData();
   fd.append('file', file);
+  fd.append('translate_model', document.getElementById('translateModel').value || '');
+  fd.append('annotate_model', document.getElementById('annotateModel').value || '');
+  fd.append('review_model', document.getElementById('reviewModel').value || '');
 
   const resultDiv = document.getElementById('singleFileResult');
   resultDiv.classList.remove('d-none');
@@ -352,7 +462,14 @@ function renderTable(results, filter = currentFilter, search = document.getEleme
       const res = await fetch(`${API}/regenerate-title`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task_id: currentTaskId, file_name: fileName, detailed: !!detailed })
+        body: JSON.stringify({
+          task_id: currentTaskId,
+          file_name: fileName,
+          detailed: !!detailed,
+          translate_model: document.getElementById('translateModel').value || null,
+          annotate_model: document.getElementById('annotateModel').value || null,
+          review_model: document.getElementById('reviewModel').value || null
+        })
       });
       const data = await res.json();
       if (res.ok && data.title) {
@@ -451,3 +568,6 @@ document.getElementById('resetResults').onclick = () => {
   document.getElementById('searchInput').value = '';
   renderTable([]);
 };
+
+// Initialize app on load
+document.addEventListener('DOMContentLoaded', initializeApp);

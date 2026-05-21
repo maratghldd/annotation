@@ -28,6 +28,10 @@ try:
         print("   Проверьте доступность сервера.\n")
     else:
         print("✅ Подключение к Ollama установлено.")
+        print(f"   Настроенные модели:")
+        print(f"     - Перевод: {client.config.translate_model}")
+        print(f"     - Аннотирование: {client.config.annotate_model}")
+        print(f"     - Проверка: {client.config.review_model}")
 except Exception as e:
     print(f"⚠️  Не удалось проверить подключение к Ollama: {e}")
 

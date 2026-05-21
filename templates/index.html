@@ -51,9 +51,67 @@
     <div class="card main-card mb-4">
       <div class="card-header py-3" style="background: linear-gradient(135deg, #2c3e50, #34495e); color: white;">
         <h1 class="h4 mb-0"><i class="bi bi-file-text me-2"></i>Генератор названий для документов</h1>
-        <small>Анализ через локальную нейросеть Ollama (Mistral)</small>
+        <small>Анализ через локальную нейросеть Ollama с настраиваемыми моделями</small>
       </div>
       <div class="card-body">
+        <!-- Настройки моделей -->
+        <div class="card mb-4 border-0 shadow-sm">
+          <div class="card-header bg-light">
+            <button class="btn btn-link text-decoration-none p-0" type="button" data-bs-toggle="collapse" data-bs-target="#modelSettings">
+              <i class="bi bi-gear me-2"></i>Настройки моделей <i class="bi bi-chevron-down ms-2" id="modelSettingsIcon"></i>
+            </button>
+          </div>
+          <div class="collapse show" id="modelSettings">
+            <div class="card-body">
+              <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                  <label class="form-label">Модель перевода <small class="text-muted">(укранский → русский)</small></label>
+                  <select class="form-select" id="translateModel">
+                    <option value="">Загрузка...</option>
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label">Модель аннотирования <small class="text-muted">(создание описания)</small></label>
+                  <select class="form-select" id="annotateModel">
+                    <option value="">Загрузка...</option>
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label">Модель проверки <small class="text-muted">(валидация)</small></label>
+                  <select class="form-select" id="reviewModel">
+                    <option value="">Загрузка...</option>
+                  </select>
+                </div>
+              </div>
+              <div class="row g-3 align-items-center">
+                <div class="col-md-6">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="enableTranslation" checked>
+                    <label class="form-check-label" for="enableTranslation">Включить перевод</label>
+                  </div>
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="enableAnnotation" checked>
+                    <label class="form-check-label" for="enableAnnotation">Включить аннотирование</label>
+                  </div>
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="enableReview" checked>
+                    <label class="form-check-label" for="enableReview">Включить проверку</label>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <button type="button" class="btn btn-outline-primary btn-sm" id="refreshModels">
+                    <i class="bi bi-arrow-clockwise me-1"></i>Обновить список моделей
+                  </button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" id="resetModels">
+                    <i class="bi bi-arrow-counterclockwise me-1"></i>Сбросить настройки
+                  </button>
+                  <div id="connectionStatus" class="mt-2"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <ul class="nav nav-pills mb-4">
           <li class="nav-item"><a class="nav-link active" href="#" data-mode="folder">Режим «Папка»</a></li>
           <li class="nav-item"><a class="nav-link" href="#" data-mode="file">Режим «Один файл»</a></li>
