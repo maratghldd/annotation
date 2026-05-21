@@ -1,4 +1,4 @@
-"""Оllama клиент с поддержкой конфигурируемых моделей для разных задач."""
+"""Ollama клиент с поддержкой конфигурируемых моделей для разных задач."""
 import os
 import urllib3
 import requests
@@ -8,14 +8,9 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class OllamaModelConfig:
-    """Конфигурация моделей для разных задач. Все модели обязательны."""
-    
-    def __init__(
-        self,
-        translate_model: str,
-        annotate_model: str,
-        review_model: str
-    ):
+    """Конфигурация моделей для разных задач."""
+
+    def __init__(self, translate_model: str, annotate_model: str, review_model: str):
         if not translate_model or not translate_model.strip():
             raise ValueError("Модель для перевода обязательна")
         if not annotate_model or not annotate_model.strip():
@@ -29,8 +24,8 @@ class OllamaModelConfig:
 
 
 class OllamaClient:
-    """Клиент для работы с Ollama API с поддержкой разных моделей."""
-    
+    """Клиент для работы с Ollama API."""
+
     def __init__(self, base_url: Optional[str] = None, config: Optional[OllamaModelConfig] = None):
         raw_url = base_url or os.environ.get("OLLAMA_URL", "https://ollama.k2.iksi.edu")
         self.base_url = raw_url.rstrip("/")
@@ -39,10 +34,10 @@ class OllamaClient:
         self.verify = False
     
     def _call_model(self, model: str, prompt: str, timeout: tuple = (10, 300)) -> str:
-        """Вызов конкретной модели с обработкой ошибок."""
+        """Вызов конкретной модели."""
         if not model or not model.strip():
-            raise ValueError(f"Модель не указана для вызова")
-            
+            raise ValueError("Модель не указана для вызова")
+
         payload = {
             "model": model.strip(),
             "prompt": prompt,
@@ -56,6 +51,7 @@ class OllamaClient:
                 timeout=timeout,
                 verify=self.verify,
             )
+            response.raise_for_status()
             if response.status_code == 200:
                 return response.json().get("response", "").strip()
             return ""
@@ -96,7 +92,7 @@ class OllamaClient:
         return self._call_model(self.config.annotate_model, prompt)
 
     def review_annotation(self, text: str, initial_annotation: str) -> str:
-        """Проверяет первичную аннотацию и выбирает самый достоверный вариант."""
+        """Проверяет первичную аннотацию."""
         if not self.config:
             raise ValueError("Конфигурация моделей не установлена")
             
@@ -115,31 +111,38 @@ class OllamaClient:
         return final_title if final_title else initial_annotation
 
     def get_available_models(self) -> list:
-        """Получить список доступных моделей из Ollama."""
+        """Получить список доступных моделей из Ollama - точно как в тестовом коде."""
         try:
-            print(f"DEBUG: Запрос к {self.base_url}/api/tags")
-            response = requests.get(f"{self.base_url}/api/tags", timeout=10, verify=self.verify)
-            print(f"DEBUG: Status code: {response.status_code}")
-            if response.status_code == 200:
-                data = response.json()
-                print(f"DEBUG: Raw response: {data}")
-                models = data.get("models", [])
-                model_names = []
-                for model in models:
-                    name = model.get("name", "")
-                    if name:
-                        model_names.append(name)
-                        print(f"DEBUG: Found model: {name}")
-                print(f"DEBUG: Total models found: {len(model_names)}")
-                return model_names
+            response = requests.get(
+                f"{self.base_url}/api/tags",
+                verify=False,
+                timeout=(10, 30)
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            models = data.get('models', [])
+            if not models:
+                print("Список моделей пуст.")
+                return []
+
+            return [model.get("name", "") for model in models if model.get("name")]
+        except requests.exceptions.RequestException as e:
+            print(f"Ошибка при подключении к API сервера моделей: {e}")
+            return []
         except Exception as e:
-            print(f"DEBUG: Ошибка получения списка моделей: {e}")
-        return []
+            print(f"Неожиданная ошибка: {e}")
+            return []
 
     def check_connection(self) -> bool:
         """Проверить подключение к Ollama."""
         try:
-            requests.get(f"{self.base_url}/api/tags", timeout=5, verify=self.verify)
+            response = requests.get(
+                f"{self.base_url}/api/tags",
+                verify=False,
+                timeout=(10, 30)
+            )
+            response.raise_for_status()
             return True
         except:
             return False

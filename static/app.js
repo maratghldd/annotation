@@ -14,86 +14,83 @@ async function initializeApp() {
   await checkConnection();
 }
 
+// Show validation error in UI
+function showValidationError(message) {
+  const errorMsg = document.getElementById('validationError');
+  if (errorMsg) {
+    errorMsg.innerHTML = `
+      <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <strong>Ошибка:</strong> ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    `;
+    errorMsg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
+// Clear validation error
+function clearValidationError() {
+  const errorMsg = document.getElementById('validationError');
+  if (errorMsg) errorMsg.innerHTML = '';
+}
+
 // Load available models
 async function loadModels() {
-  console.log('DEBUG: loadModels called');
+  console.log('loadModels: starting...');
   try {
     const res = await fetch(`${API}/models`);
-    console.log('DEBUG: Response status:', res.status);
-    
+    console.log('loadModels: response status', res.status);
+
     if (!res.ok) {
-      throw new Error(`HTTP error! status: ${res.status}`);
+      throw new Error('Сервер вернул ошибку: ' + res.status);
     }
-    
+
     const data = await res.json();
-    console.log('DEBUG: Response data:', data);
-    
-    if (!data.success) {
-      console.error('DEBUG: API returned success=false:', data.error);
-      // Show error in UI
-      const errorMsg = document.getElementById('validationError');
-      if (errorMsg) {
-        errorMsg.innerHTML = `
-          <div class="alert alert-danger" role="alert">
-            <strong>⚠️ Ошибка подключения к Ollama:</strong><br>
-            ${data.error || 'Не удалось получить список моделей'}
-          </div>
-        `;
-      }
-    }
-    
+    console.log('loadModels: response data', data);
+
     availableModels = data.available_models || [];
     currentPipelineConfig = data.pipeline_config || {};
-    console.log('DEBUG: Available models:', availableModels);
-    
+    console.log('loadModels: available models count', availableModels.length);
+
     // Populate model selectors
     const populateSelect = (selectId) => {
       const select = document.getElementById(selectId);
       if (!select) {
-        console.error('DEBUG: Select element not found:', selectId);
+        console.error('loadModels: select not found', selectId);
         return;
       }
-      
+
       if (availableModels.length === 0) {
-        select.innerHTML = '<option value="" disabled selected>— Нет доступных моделей —</option>';
-        console.log('DEBUG: No models to populate');
+        select.innerHTML = '<option value="" disabled selected>Нет доступных моделей</option>';
         return;
       }
-      
-      select.innerHTML = '<option value="" disabled selected>— Выберите модель —</option>';
+
+      select.innerHTML = '<option value="" disabled selected>-- Выберите модель --</option>';
       availableModels.forEach(model => {
         const option = document.createElement('option');
         option.value = model;
         option.textContent = model;
         select.appendChild(option);
       });
-      console.log('DEBUG: Populated', selectId, 'with', availableModels.length, 'models');
+      console.log('loadModels: populated', selectId);
     };
-    
+
     populateSelect('translateModel');
     populateSelect('annotateModel');
     populateSelect('reviewModel');
-    
+
     // Set pipeline config
     document.getElementById('enableTranslation').checked = currentPipelineConfig.enable_translation !== false;
     document.getElementById('enableAnnotation').checked = currentPipelineConfig.enable_annotation !== false;
     document.getElementById('enableReview').checked = currentPipelineConfig.enable_review !== false;
-    
+
   } catch (err) {
-    console.error('DEBUG: Ошибка загрузки моделей:', err);
-    // Show error in UI
-    const errorMsg = document.getElementById('validationError');
-    if (errorMsg) {
-      errorMsg.innerHTML = `
-        <div class="alert alert-danger" role="alert">
-          <strong>⚠️ Ошибка:</strong> ${err.message}
-        </div>
-      `;
-    }
+    console.error('loadModels: error', err);
+    showValidationError('Не удалось загрузить список моделей: ' + err.message);
     const setError = (id) => {
       const select = document.getElementById(id);
       if (select) {
-        select.innerHTML = '<option value="" disabled selected>⚠️ Ошибка загрузки</option>';
+        select.innerHTML = '<option value="" disabled selected>Ошибка загрузки</option>';
       }
     };
     setError('translateModel');
@@ -106,19 +103,15 @@ async function loadModels() {
 async function checkConnection() {
   const statusDiv = document.getElementById('connectionStatus');
   try {
-    console.log('DEBUG: checkConnection called');
     const res = await fetch(`${API}/test-connection`);
-    console.log('DEBUG: Connection check response:', res.status);
     const data = await res.json();
-    console.log('DEBUG: Connection check data:', data);
     if (data.connected) {
-      statusDiv.innerHTML = '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Ollama подключён</span>';
+      statusDiv.innerHTML = '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Подключено</span>';
     } else {
-      statusDiv.innerHTML = '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Ollama недоступен</span>';
+      statusDiv.innerHTML = '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Нет подключения</span>';
     }
   } catch (err) {
-    console.error('DEBUG: Connection check error:', err);
-    statusDiv.innerHTML = '<span class="badge bg-warning"><i class="bi bi-exclamation-triangle me-1"></i>Невозможно проверить</span>';
+    statusDiv.innerHTML = '<span class="badge bg-warning"><i class="bi bi-exclamation-triangle me-1"></i>Ошибка проверки</span>';
   }
 }
 
@@ -144,30 +137,18 @@ function validateModels() {
   const translateModel = document.getElementById('translateModel').value;
   const annotateModel = document.getElementById('annotateModel').value;
   const reviewModel = document.getElementById('reviewModel').value;
-  
+
   const errors = [];
   if (!translateModel) errors.push('Модель перевода');
   if (!annotateModel) errors.push('Модель аннотирования');
   if (!reviewModel) errors.push('Модель проверки');
-  
+
   if (errors.length > 0) {
-    // Show error in UI instead of browser alert
-    const errorMsg = document.getElementById('validationError');
-    if (errorMsg) {
-      errorMsg.innerHTML = `
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-          <strong>⚠️ Выберите модели:</strong><br>
-          - ${errors.join('<br>- ')}
-          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-      `;
-      errorMsg.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
+    showValidationError('Выберите модели: ' + errors.join(', '));
     return false;
   }
-  // Clear error if validation passes
-  const errorMsg = document.getElementById('validationError');
-  if (errorMsg) errorMsg.innerHTML = '';
+
+  clearValidationError();
   return true;
 }
 
@@ -269,8 +250,8 @@ document.getElementById('browsePath').addEventListener('keydown', (e) => {
 document.getElementById('runFolder').onclick = async () => {
   const source = document.getElementById('sourceFolder').value.trim().replace(/^["']|["']$/g, '');
   const output = document.getElementById('outputFolder').value.trim().replace(/^["']|["']$/g, '');
-  if (!source) return alert('Укажите исходную папку');
-  if (!output) return alert('Укажите папку для сохранения');
+  if (!source) return showValidationError('Укажите исходную папку');
+  if (!output) return showValidationError('Укажите папку для сохранения');
   if (!validateModels()) return;
 
   const btn = document.getElementById('runFolder');
@@ -298,7 +279,27 @@ document.getElementById('runFolder').onclick = async () => {
       })
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || 'Ошибка');
+    if (!res.ok) {
+      // Pydantic validation errors come as array of objects
+      let errorMsg = 'Ошибка';
+      if (data.detail) {
+        if (Array.isArray(data.detail)) {
+          errorMsg = data.detail.map(e => {
+            if (typeof e === 'string') return e;
+            if (e.msg) return e.msg;
+            return JSON.stringify(e);
+          }).join('; ');
+        } else if (typeof data.detail === 'string') {
+          errorMsg = data.detail;
+        } else {
+          errorMsg = JSON.stringify(data.detail);
+        }
+      }
+      showValidationError(errorMsg);
+      btn.disabled = false;
+      stopBtn.classList.add('d-none');
+      return;
+    }
     currentTaskId = data.task_id;
 
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -332,7 +333,7 @@ document.getElementById('runFolder').onclick = async () => {
       }
     }, 1000);
   } catch (err) {
-    alert(err.message);
+    showValidationError(err.message);
     btn.disabled = false;
     document.getElementById('stopFolder').classList.add('d-none');
   }
@@ -367,7 +368,7 @@ document.getElementById('stopFolder').onclick = async () => {
     poll();
   } catch (e) {
     stopBtn.disabled = false;
-    alert('Ошибка остановки');
+    showValidationError('Ошибка остановки');
   }
 };
 
@@ -403,7 +404,7 @@ async function handleFile(file) {
   
   const ext = (file.name || '').toLowerCase().slice(-5);
   if (!['.docx', '.doc', '.pdf'].some(e => ext.endsWith(e))) {
-    return alert('Поддерживаются только .docx, .doc, .pdf');
+    return showValidationError('Поддерживаются только .docx, .doc, .pdf');
   }
 
   const fd = new FormData();
@@ -419,7 +420,26 @@ async function handleFile(file) {
   try {
     const res = await fetch(`${API}/analyze-file`, { method: 'POST', body: fd });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || 'Ошибка');
+    if (!res.ok) {
+      let errorMsg = 'Ошибка';
+      if (data.detail) {
+        if (Array.isArray(data.detail)) {
+          errorMsg = data.detail.map(e => {
+            if (typeof e === 'string') return e;
+            if (e.msg) return e.msg;
+            return JSON.stringify(e);
+          }).join('; ');
+        } else if (typeof data.detail === 'string') {
+          errorMsg = data.detail;
+        } else {
+          errorMsg = JSON.stringify(data.detail);
+        }
+      }
+      showValidationError(errorMsg);
+      resultDiv.innerHTML = 'Ошибка: ' + errorMsg;
+      resultDiv.classList.add('alert-danger');
+      return;
+    }
 
     let attempts = 0;
     const poll = async () => {
@@ -559,7 +579,7 @@ function renderTable(results, filter = currentFilter, search = document.getEleme
         if (copyBtn) copyBtn.dataset.title = data.title;
       } else throw new Error(data.detail || 'Ошибка');
     } catch (e) {
-      alert(e.message);
+      showValidationError(e.message);
     }
     btn.disabled = false;
     btn.innerHTML = origHtml;
@@ -604,7 +624,7 @@ async function saveTitle(fileName, newTitle) {
     if (r) r.title = newTitle;
     const btn = [...document.querySelectorAll('.copy-title-btn')].find(b => b.closest('tr')?.querySelector(`[data-file="${fileName.replace(/"/g, '')}"]`));
     if (btn) btn.dataset.title = newTitle;
-  } catch (e) { alert('Ошибка сохранения'); }
+  } catch (e) { showValidationError('Ошибка сохранения'); }
 }
 
 // Filters
@@ -630,12 +650,21 @@ document.querySelectorAll('#resultsTable th[data-sort]').forEach(th => {
 
 // Export
 function exportUrl(format) {
-  if (!currentTaskId) return alert('Сначала выполните анализ');
+  if (!currentTaskId) {
+    showValidationError('Сначала выполните анализ');
+    return null;
+  }
   return `${API}/export/${currentTaskId}?format=${format}`;
 }
 
-document.getElementById('exportCsv').onclick = () => window.open(exportUrl('csv'), '_blank');
-document.getElementById('exportExcel').onclick = () => window.open(exportUrl('excel'), '_blank');
+document.getElementById('exportCsv').onclick = () => {
+  const url = exportUrl('csv');
+  if (url) window.open(url, '_blank');
+};
+document.getElementById('exportExcel').onclick = () => {
+  const url = exportUrl('excel');
+  if (url) window.open(url, '_blank');
+};
 
 // Reset results
 document.getElementById('resetResults').onclick = () => {
