@@ -81,7 +81,6 @@ async function loadModels() {
 
     // Set pipeline config
     document.getElementById('enableTranslation').checked = currentPipelineConfig.enable_translation !== false;
-    document.getElementById('enableAnnotation').checked = currentPipelineConfig.enable_annotation !== false;
     document.getElementById('enableReview').checked = currentPipelineConfig.enable_review !== false;
 
   } catch (err) {
@@ -105,13 +104,15 @@ async function checkConnection() {
   try {
     const res = await fetch(`${API}/test-connection`);
     const data = await res.json();
+    console.log('checkConnection: response', data);
     if (data.connected) {
-      statusDiv.innerHTML = '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Подключено</span>';
+      statusDiv.innerHTML = '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Ollama: ' + data.base_url + '</span>';
     } else {
-      statusDiv.innerHTML = '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Нет подключения</span>';
+      statusDiv.innerHTML = '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Ollama недоступна</span>';
     }
   } catch (err) {
-    statusDiv.innerHTML = '<span class="badge bg-warning"><i class="bi bi-exclamation-triangle me-1"></i>Ошибка проверки</span>';
+    console.error('checkConnection: error', err);
+    statusDiv.innerHTML = '<span class="badge bg-warning"><i class="bi bi-exclamation-triangle me-1"></i>Не проверено</span>';
   }
 }
 
@@ -274,7 +275,6 @@ document.getElementById('runFolder').onclick = async () => {
         annotate_model: document.getElementById('annotateModel').value || null,
         review_model: document.getElementById('reviewModel').value || null,
         enable_translation: document.getElementById('enableTranslation').checked,
-        enable_annotation: document.getElementById('enableAnnotation').checked,
         enable_review: document.getElementById('enableReview').checked
       })
     });
@@ -514,9 +514,8 @@ function renderTable(results, filter = currentFilter, search = document.getEleme
           <button type="button" class="btn btn-sm btn-outline-primary ms-1 save-title-btn d-none" title="Сохранить"><i class="bi bi-check"></i></button></td>
       <td><div class="actions-cell">
         ${(r.status === 'success' && (r.file_path || r.file_name)) ? `<a href="${API}/files/${currentTaskId}/${encodeURIComponent(r.file_name || r.original_name || '')}" target="_blank" class="btn btn-sm btn-outline-secondary" title="Открыть файл"><i class="bi bi-folder2-open"></i></a>` : ''}
-        ${(r.status === 'success' && (r.file_path || r.file_name)) ? `<button type="button" class="btn btn-sm btn-outline-secondary regenerate-btn" data-file-name="${escapeHtml(r.file_name || '')}" data-original-name="${escapeHtml(r.original_name || '')}" title="Перегенерировать название"><i class="bi bi-arrow-clockwise"></i></button>` : ''}
-        ${(r.status === 'success' && (r.file_path || r.file_name)) ? `<button type="button" class="btn btn-sm btn-outline-secondary regenerate-detail-btn" data-file-name="${escapeHtml(r.file_name || '')}" data-original-name="${escapeHtml(r.original_name || '')}" title="Перегенерировать более подробно"><i class="bi bi-text-paragraph"></i></button>` : ''}
-        <button type="button" class="btn btn-sm btn-outline-secondary copy-title-btn" data-title="${escapeHtml(r.title || '')}" title="Скопировать название"><i class="bi bi-clipboard"></i></button>
+        ${(r.status === 'success' && (r.file_path || r.file_name)) ? `<button type="button" class="btn btn-sm btn-outline-secondary regenerate-btn" data-file-name="${escapeHtml(r.file_name || '')}" data-original-name="${escapeHtml(r.original_name || '')}" title="Перегенерировать"><i class="bi bi-arrow-clockwise"></i></button>` : ''}
+        <button type="button" class="btn btn-sm btn-outline-secondary copy-title-btn" data-title="${escapeHtml(r.title || '')}" title="Скопировать"><i class="bi bi-clipboard"></i></button>
       </div></td>
     </tr>
   `).join('');
@@ -549,7 +548,7 @@ function renderTable(results, filter = currentFilter, search = document.getEleme
       setTimeout(() => { btn.innerHTML = '<i class="bi bi-clipboard"></i>'; }, 800);
     };
   });
-  const doRegenerate = async (btn, detailed) => {
+  const doRegenerate = async (btn) => {
     if (!validateModels()) return;
     const fileName = btn.dataset.fileName || btn.dataset.originalName;
     if (!currentTaskId || !fileName) return;
@@ -563,7 +562,6 @@ function renderTable(results, filter = currentFilter, search = document.getEleme
         body: JSON.stringify({
           task_id: currentTaskId,
           file_name: fileName,
-          detailed: !!detailed,
           translate_model: document.getElementById('translateModel').value,
           annotate_model: document.getElementById('annotateModel').value,
           review_model: document.getElementById('reviewModel').value
@@ -585,10 +583,7 @@ function renderTable(results, filter = currentFilter, search = document.getEleme
     btn.innerHTML = origHtml;
   };
   tbody.querySelectorAll('.regenerate-btn').forEach(btn => {
-    btn.onclick = () => doRegenerate(btn, false);
-  });
-  tbody.querySelectorAll('.regenerate-detail-btn').forEach(btn => {
-    btn.onclick = () => doRegenerate(btn, true);
+    btn.onclick = () => doRegenerate(btn);
   });
 }
 

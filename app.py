@@ -133,14 +133,14 @@ def _cleanup_task_files(task_id: str):
 
 
 def _save_results(results, output_file: Path, source_folder: str):
-    """Сохранить результаты анализа в текстовый файл."""
+    """Сохранить результаты аннотирования в текстовый файл."""
     from core import AnalysisResult
     with open(output_file, "w", encoding="utf-8") as f:
-        f.write("РЕЗУЛЬТАТЫ МНОГОЭТАПНОГО АНАЛИЗА\n")
+        f.write("РЕЗУЛЬТАТЫ АННОТИРОВАНИЯ ДОКУМЕНТОВ\n")
         f.write(f"Источник: {source_folder}\n")
         f.write("=" * 60 + "\n\n")
         for i, r in enumerate(results, 1):
-            f.write(f"[{i}] {r.original_name}\n   -> {r.title}\n" + "-"*40 + "\n")
+            f.write(f"[{i}] {r.original_name}\n   Аннотация: {r.title}\n" + "-"*40 + "\n")
 
 
 def run_single_file_task(
@@ -253,7 +253,6 @@ class UpdateTitleRequest(BaseModel):
 class RegenerateRequest(BaseModel):
     task_id: str
     file_name: str
-    detailed: bool = False
     translate_model: str
     annotate_model: str
     review_model: str
@@ -486,7 +485,7 @@ async def export_results(task_id: str, format: str = "txt"):
         import csv
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(["Имя файла", "Сгенерированное название", "Статус"])
+        writer.writerow(["Имя файла", "Аннотация", "Статус"])
         for r in results:
             writer.writerow([r["original_name"], r["title"], r["status"]])
         output.seek(0)
@@ -504,7 +503,7 @@ async def export_results(task_id: str, format: str = "txt"):
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Результаты"
-        ws.append(["Имя файла", "Сгенерированное название", "Статус"])
+        ws.append(["Имя файла", "Аннотация", "Статус"])
         for r in results:
             ws.append([r["original_name"], r["title"], r["status"]])
         buf = io.BytesIO()
@@ -516,13 +515,13 @@ async def export_results(task_id: str, format: str = "txt"):
         )
 
     # txt
-    lines = ["РЕЗУЛЬТАТЫ АНАЛИЗА ДОКУМЕНТОВ", f"Исходная папка: {source}", "=" * 60, ""]
+    lines = ["РЕЗУЛЬТАТЫ АННОТИРОВАНИЯ ДОКУМЕНТОВ", f"Исходная папка: {source}", "=" * 60, ""]
     for i, r in enumerate(results, 1):
         lines.append(f"[{i}] Файл: {r['original_name']}")
         if r["status"] == "error":
             lines.append("   ⚠️ НЕВОЗМОЖНО ПРОЧИТАТЬ")
         else:
-            lines.append(f"   Название: {r['title']}")
+            lines.append(f"   Аннотация: {r['title']}")
         lines.append("-" * 40)
     text = "\n".join(lines)
     return StreamingResponse(
