@@ -8,8 +8,35 @@ let sortAsc = true;
 let availableModels = [];
 let currentPipelineConfig = {};
 
+// Theme management
+function initTheme() {
+  const savedTheme = localStorage.getItem('theme') || 'light';
+  setTheme(savedTheme);
+}
+
+function setTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('theme', theme);
+  
+  const icon = document.getElementById('themeIcon');
+  if (theme === 'dark') {
+    icon.className = 'bi bi-sun-fill';
+  } else {
+    icon.className = 'bi bi-moon-fill';
+  }
+}
+
+function toggleTheme() {
+  const currentTheme = document.documentElement.getAttribute('data-theme');
+  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  setTheme(newTheme);
+}
+
+document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+
 // Initialize app
 async function initializeApp() {
+  initTheme();
   await loadModels();
   await checkConnection();
 }
