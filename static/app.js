@@ -16,16 +16,50 @@ async function initializeApp() {
 
 // Load available models
 async function loadModels() {
+  console.log('DEBUG: loadModels called');
   try {
     const res = await fetch(`${API}/models`);
+    console.log('DEBUG: Response status:', res.status);
+    
+    if (!res.ok) {
+      throw new Error(`HTTP error! status: ${res.status}`);
+    }
+    
     const data = await res.json();
+    console.log('DEBUG: Response data:', data);
+    
+    if (!data.success) {
+      console.error('DEBUG: API returned success=false:', data.error);
+      // Show error in UI
+      const errorMsg = document.getElementById('validationError');
+      if (errorMsg) {
+        errorMsg.innerHTML = `
+          <div class="alert alert-danger" role="alert">
+            <strong>⚠️ Ошибка подключения к Ollama:</strong><br>
+            ${data.error || 'Не удалось получить список моделей'}
+          </div>
+        `;
+      }
+    }
     
     availableModels = data.available_models || [];
     currentPipelineConfig = data.pipeline_config || {};
+    console.log('DEBUG: Available models:', availableModels);
     
     // Populate model selectors
     const populateSelect = (selectId) => {
       const select = document.getElementById(selectId);
+      if (!select) {
+        console.error('DEBUG: Select element not found:', selectId);
+        return;
+      }
+      
+      if (availableModels.length === 0) {
+        select.innerHTML = '<option value="" disabled selected>— Нет доступных моделей —</option>';
+        console.log('DEBUG: No models to populate');
+        return;
+      }
+      
       select.innerHTML = '<option value="" disabled selected>— Выберите модель —</option>';
       availableModels.forEach(model => {
         const option = document.createElement('option');
@@ -33,8 +67,9 @@ async function loadModels() {
         option.textContent = model;
         select.appendChild(option);
       });
+      console.log('DEBUG: Populated', selectId, 'with', availableModels.length, 'models');
     };
-
+    
     populateSelect('translateModel');
     populateSelect('annotateModel');
     populateSelect('reviewModel');
@@ -45,14 +80,25 @@ async function loadModels() {
     document.getElementById('enableReview').checked = currentPipelineConfig.enable_review !== false;
     
   } catch (err) {
-    console.error('Ошибка загрузки моделей:', err);
-    // Fallback - пустые селекторы с подсказкой
-    const setPlaceholder = (id) => {
-      document.getElementById(id).innerHTML = '<option value="" disabled selected>— Ошибка загрузки —</option>';
+    console.error('DEBUG: Ошибка загрузки моделей:', err);
+    // Show error in UI
+    const errorMsg = document.getElementById('validationError');
+    if (errorMsg) {
+      errorMsg.innerHTML = `
+        <div class="alert alert-danger" role="alert">
+          <strong>⚠️ Ошибка:</strong> ${err.message}
+        </div>
+      `;
+    }
+    const setError = (id) => {
+      const select = document.getElementById(id);
+      if (select) {
+        select.innerHTML = '<option value="" disabled selected>⚠️ Ошибка загрузки</option>';
+      }
     };
-    setPlaceholder('translateModel');
-    setPlaceholder('annotateModel');
-    setPlaceholder('reviewModel');
+    setError('translateModel');
+    setError('annotateModel');
+    setError('reviewModel');
   }
 }
 
@@ -60,14 +106,18 @@ async function loadModels() {
 async function checkConnection() {
   const statusDiv = document.getElementById('connectionStatus');
   try {
+    console.log('DEBUG: checkConnection called');
     const res = await fetch(`${API}/test-connection`);
+    console.log('DEBUG: Connection check response:', res.status);
     const data = await res.json();
+    console.log('DEBUG: Connection check data:', data);
     if (data.connected) {
       statusDiv.innerHTML = '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Ollama подключён</span>';
     } else {
       statusDiv.innerHTML = '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Ollama недоступен</span>';
     }
   } catch (err) {
+    console.error('DEBUG: Connection check error:', err);
     statusDiv.innerHTML = '<span class="badge bg-warning"><i class="bi bi-exclamation-triangle me-1"></i>Невозможно проверить</span>';
   }
 }
@@ -101,9 +151,23 @@ function validateModels() {
   if (!reviewModel) errors.push('Модель проверки');
   
   if (errors.length > 0) {
-    alert(`⚠️ Выберите модели:\n- ${errors.join('\n- ')}`);
+    // Show error in UI instead of browser alert
+    const errorMsg = document.getElementById('validationError');
+    if (errorMsg) {
+      errorMsg.innerHTML = `
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+          <strong>⚠️ Выберите модели:</strong><br>
+          - ${errors.join('<br>- ')}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      `;
+      errorMsg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
     return false;
   }
+  // Clear error if validation passes
+  const errorMsg = document.getElementById('validationError');
+  if (errorMsg) errorMsg.innerHTML = '';
   return true;
 }
 

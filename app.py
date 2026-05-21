@@ -358,18 +358,41 @@ async def cancel_task(req: CancelTaskRequest):
 @app.get("/api/models")
 async def get_available_models():
     """Получить список доступных моделей из Ollama и текущую конфигурацию."""
-    ollama = OllamaClient()
-    available = ollama.get_available_models()
+    print("=" * 50)
+    print("DEBUG API: /api/models endpoint called")
     
-    return {
-        "available_models": available,
-        "base_url": ollama_config.base_url,
-        "pipeline_config": {
-            "enable_translation": pipeline_config.enable_translation,
-            "enable_annotation": pipeline_config.enable_annotation,
-            "enable_review": pipeline_config.enable_review,
+    try:
+        ollama = OllamaClient()
+        print(f"DEBUG API: Ollama base_url = {ollama.base_url}")
+        print(f"DEBUG API: verify = {ollama.verify}")
+        
+        available = ollama.get_available_models()
+        print(f"DEBUG API: Available models count = {len(available)}")
+        print(f"DEBUG API: Available models = {available}")
+        
+        return {
+            "available_models": available,
+            "base_url": ollama_config.base_url,
+            "pipeline_config": {
+                "enable_translation": pipeline_config.enable_translation,
+                "enable_annotation": pipeline_config.enable_annotation,
+                "enable_review": pipeline_config.enable_review,
+            },
+            "success": True
         }
-    }
+    except Exception as e:
+        print(f"DEBUG API: Error in get_available_models: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "available_models": [],
+            "base_url": ollama_config.base_url,
+            "pipeline_config": {},
+            "success": False,
+            "error": str(e)
+        }
+    finally:
+        print("=" * 50)
 
 
 @app.post("/api/test-connection")

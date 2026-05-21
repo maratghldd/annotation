@@ -117,12 +117,23 @@ class OllamaClient:
     def get_available_models(self) -> list:
         """Получить список доступных моделей из Ollama."""
         try:
+            print(f"DEBUG: Запрос к {self.base_url}/api/tags")
             response = requests.get(f"{self.base_url}/api/tags", timeout=10, verify=self.verify)
+            print(f"DEBUG: Status code: {response.status_code}")
             if response.status_code == 200:
                 data = response.json()
-                return [model.get("name", "") for model in data.get("models", [])]
+                print(f"DEBUG: Raw response: {data}")
+                models = data.get("models", [])
+                model_names = []
+                for model in models:
+                    name = model.get("name", "")
+                    if name:
+                        model_names.append(name)
+                        print(f"DEBUG: Found model: {name}")
+                print(f"DEBUG: Total models found: {len(model_names)}")
+                return model_names
         except Exception as e:
-            print(f"Ошибка получения списка моделей: {e}")
+            print(f"DEBUG: Ошибка получения списка моделей: {e}")
         return []
 
     def check_connection(self) -> bool:
