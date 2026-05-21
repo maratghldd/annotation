@@ -6,7 +6,6 @@ let currentFilter = 'all';
 let sortColumn = 'original_name';
 let sortAsc = true;
 let availableModels = [];
-let currentModelConfig = {};
 let currentPipelineConfig = {};
 
 // Initialize app
@@ -22,33 +21,23 @@ async function loadModels() {
     const data = await res.json();
     
     availableModels = data.available_models || [];
-    currentModelConfig = data.current_config || {};
     currentPipelineConfig = data.pipeline_config || {};
     
     // Populate model selectors
-    const populateSelect = (selectId, currentValue) => {
+    const populateSelect = (selectId) => {
       const select = document.getElementById(selectId);
-      select.innerHTML = '';
+      select.innerHTML = '<option value="" disabled selected>— Выберите модель —</option>';
       availableModels.forEach(model => {
         const option = document.createElement('option');
         option.value = model;
         option.textContent = model;
-        if (model === currentValue) option.selected = true;
         select.appendChild(option);
       });
-      // Add current model if not in list
-      if (currentValue && !availableModels.includes(currentValue)) {
-        const option = document.createElement('option');
-        option.value = currentValue;
-        option.textContent = `${currentValue} (текущая)`;
-        option.selected = true;
-        select.appendChild(option);
-      }
     };
 
-    populateSelect('translateModel', currentModelConfig.translate_model);
-    populateSelect('annotateModel', currentModelConfig.annotate_model);
-    populateSelect('reviewModel', currentModelConfig.review_model);
+    populateSelect('translateModel');
+    populateSelect('annotateModel');
+    populateSelect('reviewModel');
     
     // Set pipeline config
     document.getElementById('enableTranslation').checked = currentPipelineConfig.enable_translation !== false;
@@ -57,10 +46,13 @@ async function loadModels() {
     
   } catch (err) {
     console.error('Ошибка загрузки моделей:', err);
-    // Fallback defaults
-    document.getElementById('translateModel').innerHTML = '<option value="glm-4.7-flash:latest">glm-4.7-flash:latest</option>';
-    document.getElementById('annotateModel').innerHTML = '<option value="qwen3:235b">qwen3:235b</option>';
-    document.getElementById('reviewModel').innerHTML = '<option value="deepseek-r1:32b">deepseek-r1:32b</option>';
+    // Fallback - пустые селекторы с подсказкой
+    const setPlaceholder = (id) => {
+      document.getElementById(id).innerHTML = '<option value="" disabled selected>— Ошибка загрузки —</option>';
+    };
+    setPlaceholder('translateModel');
+    setPlaceholder('annotateModel');
+    setPlaceholder('reviewModel');
   }
 }
 
@@ -96,6 +88,24 @@ document.getElementById('resetModels').onclick = () => {
   document.getElementById('annotateModel').selectedIndex = 0;
   document.getElementById('reviewModel').selectedIndex = 0;
 };
+
+// Validate model selection
+function validateModels() {
+  const translateModel = document.getElementById('translateModel').value;
+  const annotateModel = document.getElementById('annotateModel').value;
+  const reviewModel = document.getElementById('reviewModel').value;
+  
+  const errors = [];
+  if (!translateModel) errors.push('Модель перевода');
+  if (!annotateModel) errors.push('Модель аннотирования');
+  if (!reviewModel) errors.push('Модель проверки');
+  
+  if (errors.length > 0) {
+    alert(`⚠️ Выберите модели:\n- ${errors.join('\n- ')}`);
+    return false;
+  }
+  return true;
+}
 
 // Toggle model settings icon
 document.querySelector('[data-bs-toggle="collapse"][data-bs-target="#modelSettings"]').addEventListener('click', () => {
@@ -197,6 +207,7 @@ document.getElementById('runFolder').onclick = async () => {
   const output = document.getElementById('outputFolder').value.trim().replace(/^["']|["']$/g, '');
   if (!source) return alert('Укажите исходную папку');
   if (!output) return alert('Укажите папку для сохранения');
+  if (!validateModels()) return;
 
   const btn = document.getElementById('runFolder');
   const stopBtn = document.getElementById('stopFolder');
@@ -324,6 +335,8 @@ fileInput.onchange = () => {
 };
 
 async function handleFile(file) {
+  if (!validateModels()) return;
+  
   const ext = (file.name || '').toLowerCase().slice(-5);
   if (!['.docx', '.doc', '.pdf'].some(e => ext.endsWith(e))) {
     return alert('Поддерживаются только .docx, .doc, .pdf');
@@ -453,6 +466,7 @@ function renderTable(results, filter = currentFilter, search = document.getEleme
     };
   });
   const doRegenerate = async (btn, detailed) => {
+    if (!validateModels()) return;
     const fileName = btn.dataset.fileName || btn.dataset.originalName;
     if (!currentTaskId || !fileName) return;
     const origHtml = btn.innerHTML;
@@ -466,9 +480,9 @@ function renderTable(results, filter = currentFilter, search = document.getEleme
           task_id: currentTaskId,
           file_name: fileName,
           detailed: !!detailed,
-          translate_model: document.getElementById('translateModel').value || null,
-          annotate_model: document.getElementById('annotateModel').value || null,
-          review_model: document.getElementById('reviewModel').value || null
+          translate_model: document.getElementById('translateModel').value,
+          annotate_model: document.getElementById('annotateModel').value,
+          review_model: document.getElementById('reviewModel').value
         })
       });
       const data = await res.json();

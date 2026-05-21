@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi import Request
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from core import DocumentAnalyzer, AnalysisResult, OllamaClient, OllamaModelConfig, PipelineConfig
 from config import ollama_config, pipeline_config
 
@@ -59,11 +59,11 @@ def run_folder_analysis_task(
         def cancel_check():
             return task_cancelled.get(task_id, False)
 
-        # Настройка конфигурации моделей
+        # Настройка конфигурации моделей (все модели обязательны)
         model_config = OllamaModelConfig(
-            translate_model=translate_model or ollama_config.translate_model,
-            annotate_model=annotate_model or ollama_config.annotate_model,
-            review_model=review_model or ollama_config.review_model
+            translate_model=translate_model,
+            annotate_model=annotate_model,
+            review_model=review_model
         )
         
         ollama_client = OllamaClient(
@@ -147,9 +147,9 @@ def run_single_file_task(
     task_id: str, 
     file_path: Path, 
     output_dir: Path,
-    translate_model: Optional[str] = None,
-    annotate_model: Optional[str] = None,
-    review_model: Optional[str] = None
+    translate_model: str,
+    annotate_model: str,
+    review_model: str
 ):
     try:
         tasks[task_id]["status"] = "running"
@@ -157,11 +157,11 @@ def run_single_file_task(
         output_dirs[task_id] = output_dir
         source_folders[task_id] = str(file_path.parent)
 
-        # Настройка конфигурации моделей
+        # Настройка конфигурации моделей (все модели обязательны)
         model_config = OllamaModelConfig(
-            translate_model=translate_model or ollama_config.translate_model,
-            annotate_model=annotate_model or ollama_config.annotate_model,
-            review_model=review_model or ollama_config.review_model
+            translate_model=translate_model,
+            annotate_model=annotate_model,
+            review_model=review_model
         )
         
         ollama_client = OllamaClient(
@@ -215,19 +215,33 @@ templates = Jinja2Templates(directory="templates")
 class AnalyzeFolderRequest(BaseModel):
     source_folder: str
     output_folder: str
-    translate_model: Optional[str] = None
-    annotate_model: Optional[str] = None
-    review_model: Optional[str] = None
+    translate_model: str
+    annotate_model: str
+    review_model: str
     enable_translation: Optional[bool] = None
     enable_annotation: Optional[bool] = None
     enable_review: Optional[bool] = None
 
+    @field_validator('translate_model', 'annotate_model', 'review_model')
+    @classmethod
+    def validate_model_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError('Модель обязательна для выбора')
+        return v.strip()
+
 
 class AnalyzeFileRequest(BaseModel):
     file_name: str
-    translate_model: Optional[str] = None
-    annotate_model: Optional[str] = None
-    review_model: Optional[str] = None
+    translate_model: str
+    annotate_model: str
+    review_model: str
+
+    @field_validator('translate_model', 'annotate_model', 'review_model')
+    @classmethod
+    def validate_model_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError('Модель обязательна для выбора')
+        return v.strip()
 
 
 class UpdateTitleRequest(BaseModel):
@@ -240,9 +254,16 @@ class RegenerateRequest(BaseModel):
     task_id: str
     file_name: str
     detailed: bool = False
-    translate_model: Optional[str] = None
-    annotate_model: Optional[str] = None
-    review_model: Optional[str] = None
+    translate_model: str
+    annotate_model: str
+    review_model: str
+
+    @field_validator('translate_model', 'annotate_model', 'review_model')
+    @classmethod
+    def validate_model_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError('Модель обязательна для выбора')
+        return v.strip()
 
 
 class CancelTaskRequest(BaseModel):
@@ -342,12 +363,7 @@ async def get_available_models():
     
     return {
         "available_models": available,
-        "current_config": {
-            "translate_model": ollama_config.translate_model,
-            "annotate_model": ollama_config.annotate_model,
-            "review_model": ollama_config.review_model,
-            "base_url": ollama_config.base_url,
-        },
+        "base_url": ollama_config.base_url,
         "pipeline_config": {
             "enable_translation": pipeline_config.enable_translation,
             "enable_annotation": pipeline_config.enable_annotation,
@@ -402,11 +418,11 @@ async def regenerate_title(req: RegenerateRequest):
     from core import OllamaClient, OllamaModelConfig
     from config import ollama_config
     
-    # Настройка моделей
+    # Настройка моделей (все модели обязательны)
     model_config = OllamaModelConfig(
-        translate_model=req.translate_model or ollama_config.translate_model,
-        annotate_model=req.annotate_model or ollama_config.annotate_model,
-        review_model=req.review_model or ollama_config.review_model
+        translate_model=req.translate_model,
+        annotate_model=req.annotate_model,
+        review_model=req.review_model
     )
 
     ollama = OllamaClient(base_url=ollama_config.base_url, config=model_config)

@@ -8,17 +8,24 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class OllamaModelConfig:
-    """Конфигурация моделей для разных задач."""
+    """Конфигурация моделей для разных задач. Все модели обязательны."""
     
     def __init__(
         self,
-        translate_model: str = "glm-4.7-flash:latest",
-        annotate_model: str = "qwen3:235b",
-        review_model: str = "deepseek-r1:32b"
+        translate_model: str,
+        annotate_model: str,
+        review_model: str
     ):
-        self.translate_model = translate_model
-        self.annotate_model = annotate_model
-        self.review_model = review_model
+        if not translate_model or not translate_model.strip():
+            raise ValueError("Модель для перевода обязательна")
+        if not annotate_model or not annotate_model.strip():
+            raise ValueError("Модель для аннотирования обязательна")
+        if not review_model or not review_model.strip():
+            raise ValueError("Модель для проверки обязательна")
+            
+        self.translate_model = translate_model.strip()
+        self.annotate_model = annotate_model.strip()
+        self.review_model = review_model.strip()
 
 
 class OllamaClient:
@@ -28,13 +35,16 @@ class OllamaClient:
         raw_url = base_url or os.environ.get("OLLAMA_URL", "https://ollama.k2.iksi.edu")
         self.base_url = raw_url.rstrip("/")
         self.generate_url = f"{self.base_url}/api/generate"
-        self.config = config or OllamaModelConfig()
+        self.config = config
         self.verify = False
     
     def _call_model(self, model: str, prompt: str, timeout: tuple = (10, 300)) -> str:
         """Вызов конкретной модели с обработкой ошибок."""
+        if not model or not model.strip():
+            raise ValueError(f"Модель не указана для вызова")
+            
         payload = {
-            "model": model,
+            "model": model.strip(),
             "prompt": prompt,
             "stream": False,
             "think": False,
@@ -55,6 +65,8 @@ class OllamaClient:
     
     def translate_text(self, text: str) -> str:
         """Переводит текст на русский, если он на украинском."""
+        if not self.config:
+            raise ValueError("Конфигурация моделей не установлена")
         if not text or len(text.strip()) < 20:
             return text
 
@@ -70,6 +82,9 @@ class OllamaClient:
 
     def generate_annotation(self, text: str, filename: str) -> str:
         """Создает первичную подробную аннотацию (заголовок)."""
+        if not self.config:
+            raise ValueError("Конфигурация моделей не установлена")
+            
         prompt = f"""Проанализируй текст документа и придумай развёрнутое, понятное название (8-15 слов) на РУССКОМ языке.
 Название должно отражать суть документа.
 
@@ -82,6 +97,9 @@ class OllamaClient:
 
     def review_annotation(self, text: str, initial_annotation: str) -> str:
         """Проверяет первичную аннотацию и выбирает самый достоверный вариант."""
+        if not self.config:
+            raise ValueError("Конфигурация моделей не установлена")
+            
         prompt = f"""Ты — эксперт-редактор. Проверь предложенный заголовок на соответствие тексту документа.
 Если заголовок точный, верни его. Если он содержит ошибки или неточности, исправь его, сделав максимально достоверным.
 
@@ -99,12 +117,12 @@ class OllamaClient:
     def get_available_models(self) -> list:
         """Получить список доступных моделей из Ollama."""
         try:
-            response = requests.get(f"{self.base_url}/api/tags", timeout=5, verify=self.verify)
+            response = requests.get(f"{self.base_url}/api/tags", timeout=10, verify=self.verify)
             if response.status_code == 200:
                 data = response.json()
                 return [model.get("name", "") for model in data.get("models", [])]
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Ошибка получения списка моделей: {e}")
         return []
 
     def check_connection(self) -> bool:

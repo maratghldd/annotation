@@ -6,11 +6,8 @@ from dataclasses import dataclass
 
 @dataclass
 class OllamaConfig:
-    """Конфигурация Ollama."""
+    """Конфигурация Ollama. Модели НЕ имеют значений по умолчанию - выбор обязателен."""
     base_url: str = os.environ.get("OLLAMA_URL", "https://ollama.k2.iksi.edu")
-    translate_model: str = os.environ.get("OLLAMA_TRANSLATE_MODEL", "glm-4.7-flash:latest")
-    annotate_model: str = os.environ.get("OLLAMA_ANNOTATE_MODEL", "qwen3:235b")
-    review_model: str = os.environ.get("OLLAMA_REVIEW_MODEL", "deepseek-r1:32b")
     verify_ssl: bool = os.environ.get("OLLAMA_VERIFY_SSL", "false").lower() == "true"
 
 
