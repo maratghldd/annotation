@@ -552,6 +552,10 @@ function renderTable(results, filter = currentFilter, search = document.getEleme
       ? '<span class="badge bg-danger">✗ Проблемы</span>'
       : '<span class="badge bg-secondary">–</span>';
     
+    const fixButton = (r.review_status === 'warnings' || r.review_status === 'failed') && r.status === 'success'
+      ? `<button type="button" class="btn btn-sm btn-outline-success ms-1 fix-review-btn" data-file-name="${escapeHtml(r.file_name || '')}" data-original-name="${escapeHtml(r.original_name || '')}" title="Устранить замечания"><i class="bi bi-check2-square"></i> Устранить</button>`
+      : '';
+    
     return `<tr data-file="${(r.file_name || r.original_name || '').replace(/"/g, '&quot;')}">
       <td><span class="status-${r.status === 'success' ? 'ok' : 'err'}">${r.status === 'success' ? 'Прочитан' : 'Не прочитан'}</span></td>
       <td>${escapeHtml(r.original_name || r.file_name || '')}</td>
@@ -560,6 +564,7 @@ function renderTable(results, filter = currentFilter, search = document.getEleme
       <td>
         ${reviewBadge}
         <button type="button" class="btn btn-sm btn-outline-info ms-1 review-details-btn" data-review="${escapeHtml(r.review_report || '')}" title="Подробности"><i class="bi bi-info-circle"></i></button>
+        ${fixButton}
       </td>
       <td><div class="actions-cell">
         ${(r.status === 'success' && (r.file_path || r.file_name)) ? `<a href="${API}/files/${currentTaskId}/${encodeURIComponent(r.file_name || r.original_name || '')}" target="_blank" class="btn btn-sm btn-outline-secondary" title="Открыть файл"><i class="bi bi-folder2-open"></i></a>` : ''}
@@ -605,6 +610,14 @@ function renderTable(results, filter = currentFilter, search = document.getEleme
       showReviewReport(report);
     };
   });
+  
+  // Обработчик кнопки устранения замечаний
+  tbody.querySelectorAll('.fix-review-btn').forEach(btn => {
+    btn.onclick = () => {
+      const fileName = btn.dataset.fileName || btn.dataset.originalName;
+      fixReviewIssues(fileName);
+    };
+  });
   const doRegenerate = async (btn) => {
     if (!validateModels()) return;
     const fileName = btn.dataset.fileName || btn.dataset.originalName;
@@ -627,11 +640,37 @@ function renderTable(results, filter = currentFilter, search = document.getEleme
       const data = await res.json();
       if (res.ok && data.title) {
         const r = currentResults.find(x => (x.file_name || x.original_name) === fileName);
-        if (r) r.title = data.title;
+        if (r) {
+          r.title = data.title;
+          r.review_status = data.review_status || 'passed';
+          r.review_report = data.review_report || '';
+        }
         const span = btn.closest('tr')?.querySelector('.editable-title');
         if (span) span.textContent = data.title;
         const copyBtn = btn.closest('tr')?.querySelector('.copy-title-btn');
         if (copyBtn) copyBtn.dataset.title = data.title;
+        
+        // Обновляем колонку проверки
+        const reviewCell = btn.closest('tr')?.querySelector('td:nth-child(4)');
+        if (reviewCell) {
+          const reviewBadge = data.review_status === 'passed' 
+            ? '<span class="badge bg-success">✓ Проверена</span>'
+            : data.review_status === 'warnings'
+            ? '<span class="badge bg-warning text-dark">⚠ Замечания</span>'
+            : data.review_status === 'failed'
+            ? '<span class="badge bg-danger">✗ Проблемы</span>'
+            : '<span class="badge bg-secondary">–</span>';
+          
+          reviewCell.innerHTML = `
+            ${reviewBadge}
+            <button type="button" class="btn btn-sm btn-outline-info ms-1 review-details-btn" data-review="${escapeHtml(data.review_report || '')}" title="Подробности"><i class="bi bi-info-circle"></i></button>
+          `;
+          
+          // Перепривязываем обработчик
+          reviewCell.querySelector('.review-details-btn')?.addEventListener('click', () => {
+            showReviewReport(data.review_report || '');
+          });
+        }
       } else throw new Error(data.detail || 'Ошибка');
     } catch (e) {
       showValidationError(e.message);
@@ -760,6 +799,92 @@ function showReviewReport(report) {
   document.getElementById('reviewReportModal').addEventListener('hidden.bs.modal', () => {
     document.getElementById('reviewReportModal').remove();
   });
+}
+
+// Устранить замечания проверки
+async function fixReviewIssues(fileName) {
+  if (!currentTaskId || !fileName) return;
+  if (!validateModels()) return;
+  
+  const row = document.querySelector(`tr[data-file="${fileName.replace(/"/g, '&quot;')}"]`);
+  if (!row) return;
+  
+  const fixBtn = row.querySelector('.fix-review-btn');
+  if (!fixBtn) return;
+  
+  const origHtml = fixBtn.innerHTML;
+  fixBtn.disabled = true;
+  fixBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Устранение...';
+  
+  try {
+    const res = await fetch(`${API}/regenerate-title`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        task_id: currentTaskId,
+        file_name: fileName,
+        translate_model: document.getElementById('translateModel').value,
+        annotate_model: document.getElementById('annotateModel').value,
+        review_model: document.getElementById('reviewModel').value
+      })
+    });
+    const data = await res.json();
+    if (res.ok && data.title) {
+      const r = currentResults.find(x => (x.file_name || x.original_name) === fileName);
+      if (r) {
+        r.title = data.title;
+        r.review_status = data.review_status || 'passed';
+        r.review_report = data.review_report || '';
+      }
+      
+      // Обновляем ячейку аннотации
+      const span = row.querySelector('.editable-title');
+      if (span) span.textContent = data.title;
+      
+      // Обновляем колонку проверки
+      const reviewCell = row.querySelector('td:nth-child(4)');
+      if (reviewCell) {
+        const reviewBadge = data.review_status === 'passed' 
+          ? '<span class="badge bg-success">✓ Проверена</span>'
+          : data.review_status === 'warnings'
+          ? '<span class="badge bg-warning text-dark">⚠ Замечания</span>'
+          : data.review_status === 'failed'
+          ? '<span class="badge bg-danger">✗ Проблемы</span>'
+          : '<span class="badge bg-secondary">–</span>';
+        
+        const fixButton = (data.review_status === 'warnings' || data.review_status === 'failed')
+          ? `<button type="button" class="btn btn-sm btn-outline-success ms-1 fix-review-btn" data-file-name="${fileName}" title="Устранить замечания"><i class="bi bi-check2-square"></i> Устранить</button>`
+          : '';
+        
+        reviewCell.innerHTML = `
+          ${reviewBadge}
+          <button type="button" class="btn btn-sm btn-outline-info ms-1 review-details-btn" data-review="${escapeHtml(data.review_report || '')}" title="Подробности"><i class="bi bi-info-circle"></i></button>
+          ${fixButton}
+        `;
+        
+        // Перепривязываем обработчики
+        reviewCell.querySelector('.review-details-btn')?.addEventListener('click', () => {
+          showReviewReport(data.review_report || '');
+        });
+        reviewCell.querySelector('.fix-review-btn')?.addEventListener('click', () => {
+          fixReviewIssues(fileName);
+        });
+      }
+      
+      // Обновляем данные в currentResults
+      if (r) {
+        const copyBtn = row.querySelector('.copy-title-btn');
+        if (copyBtn) copyBtn.dataset.title = data.title;
+      }
+    } else {
+      throw new Error(data.detail || 'Ошибка');
+    }
+  } catch (e) {
+    showValidationError(e.message);
+  }
+  
+  fixBtn.disabled = false;
+  fixBtn.innerHTML = origHtml;
 }
 
 // Initialize app on load

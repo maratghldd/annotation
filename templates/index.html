@@ -153,18 +153,26 @@
     
     .editable-title {
       cursor: text;
-      padding: 4px 8px;
+      padding: 8px 12px;
       border-radius: 4px;
       color: var(--text-main);
+      background: var(--table-bg-hover);
+      border: 1px solid var(--border-color);
+      display: inline-block;
+      min-width: 200px;
+      max-width: 100%;
+      word-break: break-word;
+      line-height: 1.5;
     }
     
     .editable-title:hover {
-      background: rgba(52, 152, 219, 0.1);
+      border-color: var(--accent);
     }
     
     .editable-title[contenteditable]:focus {
-      outline: 2px solid var(--accent);
-      background: var(--bg-card);
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
     }
     
     .status-ok { color: var(--success); }
@@ -500,6 +508,6 @@
   </div>
 
   <script src="/static/js/bootstrap.bundle.min.js"></script>
-  <script src="/static/app.js?v=6"></script>
+  <script src="/static/app.js?v=7"></script>
 </body>
 </html>
