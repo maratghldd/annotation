@@ -77,40 +77,78 @@ class OllamaClient:
         return translated if translated else text
 
     def generate_annotation(self, text: str, filename: str) -> str:
-        """Создает краткий пересказ содержимого документа (3-5 предложений)."""
+        """Создает краткий пересказ содержимого документа (несколько абзацев)."""
         if not self.config:
             raise ValueError("Конфигурация моделей не установлена")
             
         prompt = f"""Проанализируй текст документа и составь краткий пересказ его содержимого на РУССКОМ языке.
-Пересказ должен состоять из 3-5 предложений и отражать основную суть документа: о чём он, какая тема, ключевые моменты.
-Не используй маркированные списки, только связный текст.
+Пересказ должен быть структурированным, состоять из 2-4 абзацев и отражать основную суть документа.
+Каждый абзац посвящён отдельному аспекту: о чём документ, какие ключевые моменты, выводы.
+Не используй маркированные списки, только связный текст с абзацами.
 
 Имя файла: {filename}
 Текст:
-{text[:3000]}
+{text[:5000]}
 
 Краткий пересказ:"""
         return self._call_model(self.config.annotate_model, prompt)
 
-    def review_annotation(self, text: str, initial_annotation: str) -> str:
-        """Проверяет и улучшает краткий пересказ."""
+    def review_annotation(self, text: str, initial_annotation: str) -> tuple:
+        """Проверяет и улучшает краткий пересказ. Возвращает (аннотация, статус_проверки, отчет)."""
         if not self.config:
             raise ValueError("Конфигурация моделей не установлена")
             
-        prompt = f"""Ты — эксперт-редактор. Проверь предложенный краткий пересказ документа на соответствие тексту.
-Если пересказ точный и полный, верни его. Если он содержит ошибки, неточности или упускает важное — исправь.
-Пересказ должен быть 3-5 предложениями на РУССКОМ языке.
+        prompt = f"""Ты — эксперт-редактор. Проверь предложенный пересказ документа на соответствие тексту.
+
+Твоя задача:
+1. Проверь, что в пересказе нет вымышленных фактов, не указанных в тексте
+2. Проверь, что пересказ точно отражает содержание
+3. Если есть неточности — исправь их
+4. В конце укажи результат проверки
 
 Текст документа (отрывок):
-{text[:2000]}
+{text[:4000]}
 
 Предложенный пересказ:
 {initial_annotation}
 
-Итоговый, самый достоверный пересказ:"""
+Выполни проверку и верни ответ в формате:
+===РЕЗУЛЬТАТ ПРОВЕРКИ===
+[Здесь напиши краткий отчет о проверке: что проверено, есть ли проблемы]
+===ФИНАЛЬНЫЙ ПЕРЕСКАЗ===
+[Здесь напиши итоговый пересказ, исправленный если нужно]
+===КОНЕЦ==="""
 
-        final_title = self._call_model(self.config.review_model, prompt)
-        return final_title if final_title else initial_annotation
+        response = self._call_model(self.config.review_model, prompt)
+        
+        # Парсим ответ
+        annotation = initial_annotation
+        status = "passed"
+        report = "Проверка пройдена без замечаний"
+        
+        if "===РЕЗУЛЬТАТ ПРОВЕРКИ===" in response and "===ФИНАЛЬНЫЙ ПЕРЕСКАЗ===" in response:
+            parts = response.split("===ФИНАЛЬНЫЙ ПЕРЕСКАЗ===")
+            if len(parts) >= 2:
+                report_part = parts[0].replace("===РЕЗУЛЬТАТ ПРОВЕРКИ===", "").strip()
+                annotation_part = parts[1].split("===КОНЕЦ===")[0].strip() if "===КОНЕЦ===" in parts[1] else parts[1].strip()
+                
+                annotation = annotation_part if annotation_part else annotation
+                report = report_part
+                
+                # Определяем статус по ключевым словам
+                if "проблем" in report.lower() or "ошибка" in report.lower() or "неточно" in report.lower():
+                    status = "warnings"
+                elif "вымышлен" in report.lower() or "не соответствует" in report.lower():
+                    status = "failed"
+                else:
+                    status = "passed"
+        else:
+            # Если формат не распознан, используем ответ как аннотацию
+            annotation = response if response else initial_annotation
+            report = "Проверка завершена"
+            status = "passed"
+        
+        return annotation, status, report
 
     def get_available_models(self) -> list:
         """Получить список доступных моделей из Ollama - точно как в тестовом коде."""

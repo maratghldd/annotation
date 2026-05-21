@@ -543,19 +543,31 @@ function renderTable(results, filter = currentFilter, search = document.getEleme
     tbody.innerHTML = `<tr><td colspan="4" class="text-muted text-center py-5">${msg}</td></tr>`;
     return;
   }
-  tbody.innerHTML = rows.map(r => `
-    <tr data-file="${(r.file_name || r.original_name || '').replace(/"/g, '&quot;')}">
+  tbody.innerHTML = rows.map(r => {
+    const reviewBadge = r.review_status === 'passed' 
+      ? '<span class="badge bg-success">✓ Проверена</span>'
+      : r.review_status === 'warnings'
+      ? '<span class="badge bg-warning text-dark">⚠ Замечания</span>'
+      : r.review_status === 'failed'
+      ? '<span class="badge bg-danger">✗ Проблемы</span>'
+      : '<span class="badge bg-secondary">–</span>';
+    
+    return `<tr data-file="${(r.file_name || r.original_name || '').replace(/"/g, '&quot;')}">
       <td><span class="status-${r.status === 'success' ? 'ok' : 'err'}">${r.status === 'success' ? 'Прочитан' : 'Не прочитан'}</span></td>
       <td>${escapeHtml(r.original_name || r.file_name || '')}</td>
-      <td><span class="editable-title" contenteditable="true" data-file-name="${escapeHtml(r.file_name || '')}" data-original-name="${escapeHtml(r.original_name || '')}">${escapeHtml(r.title || '')}</span>
+      <td><span class="editable-title" contenteditable="true" data-file-name="${escapeHtml(r.file_name || '')}" data-original-name="${escapeHtml(r.original_name || '')}">${escapeHtml(r.title || '').replace(/\n/g, '<br>')}</span>
           <button type="button" class="btn btn-sm btn-outline-primary ms-1 save-title-btn d-none" title="Сохранить"><i class="bi bi-check"></i></button></td>
+      <td>
+        ${reviewBadge}
+        <button type="button" class="btn btn-sm btn-outline-info ms-1 review-details-btn" data-review="${escapeHtml(r.review_report || '')}" title="Подробности"><i class="bi bi-info-circle"></i></button>
+      </td>
       <td><div class="actions-cell">
         ${(r.status === 'success' && (r.file_path || r.file_name)) ? `<a href="${API}/files/${currentTaskId}/${encodeURIComponent(r.file_name || r.original_name || '')}" target="_blank" class="btn btn-sm btn-outline-secondary" title="Открыть файл"><i class="bi bi-folder2-open"></i></a>` : ''}
         ${(r.status === 'success' && (r.file_path || r.file_name)) ? `<button type="button" class="btn btn-sm btn-outline-secondary regenerate-btn" data-file-name="${escapeHtml(r.file_name || '')}" data-original-name="${escapeHtml(r.original_name || '')}" title="Перегенерировать"><i class="bi bi-arrow-clockwise"></i></button>` : ''}
         <button type="button" class="btn btn-sm btn-outline-secondary copy-title-btn" data-title="${escapeHtml(r.title || '')}" title="Скопировать"><i class="bi bi-clipboard"></i></button>
       </div></td>
-    </tr>
-  `).join('');
+    </tr>`;
+  }).join('');
 
   // Edit + save
   tbody.querySelectorAll('.editable-title').forEach(el => {
@@ -583,6 +595,14 @@ function renderTable(results, filter = currentFilter, search = document.getEleme
       navigator.clipboard.writeText(title);
       btn.innerHTML = '<i class="bi bi-check text-success"></i>';
       setTimeout(() => { btn.innerHTML = '<i class="bi bi-clipboard"></i>'; }, 800);
+    };
+  });
+  
+  // Обработчик кнопки просмотра деталей проверки
+  tbody.querySelectorAll('.review-details-btn').forEach(btn => {
+    btn.onclick = () => {
+      const report = btn.dataset.review || '';
+      showReviewReport(report);
     };
   });
   const doRegenerate = async (btn) => {
@@ -707,6 +727,40 @@ document.getElementById('resetResults').onclick = () => {
   document.getElementById('searchInput').value = '';
   renderTable([]);
 };
+
+// Показать отчет проверки
+function showReviewReport(report) {
+  const modalHtml = `
+    <div class="modal fade" id="reviewReportModal" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Результат проверки</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <pre style="white-space: pre-wrap; word-break: break-word;">${report}</pre>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  // Удаляем старое модальное если есть
+  const existing = document.getElementById('reviewReportModal');
+  if (existing) existing.remove();
+  
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  const modal = new bootstrap.Modal(document.getElementById('reviewReportModal'));
+  modal.show();
+  
+  document.getElementById('reviewReportModal').addEventListener('hidden.bs.modal', () => {
+    document.getElementById('reviewReportModal').remove();
+  });
+}
 
 // Initialize app on load
 document.addEventListener('DOMContentLoaded', initializeApp);

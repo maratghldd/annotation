@@ -15,6 +15,8 @@ class AnalysisResult:
     status: str
     original_name: str = ""
     file_path: str = ""
+    review_status: str = "passed"  # passed, warnings, failed
+    review_report: str = ""  # Отчет проверки
 
 
 @dataclass
@@ -83,16 +85,20 @@ class DocumentAnalyzer:
             # Этап 3: Проверка
             if self.config.enable_review and initial_title:
                 self._log("   - Этап 3: Проверка достоверности")
-                final_title = self.ollama.review_annotation(working_text, initial_title)
+                final_title, review_status, review_report = self.ollama.review_annotation(working_text, initial_title)
             else:
                 final_title = initial_title
+                review_status = "skipped"
+                review_report = "Проверка не проводилась"
             
             return AnalysisResult(
                 file_name=processed.name,
                 title=final_title if final_title else "Нет названия",
                 status="success",
                 original_name=file_path.name,
-                file_path=str(processed)
+                file_path=str(processed),
+                review_status=review_status,
+                review_report=review_report
             )
             
         except Exception as e:

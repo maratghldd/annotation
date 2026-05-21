@@ -95,7 +95,15 @@ def run_folder_analysis_task(
             return
 
         task_results[task_id] = [
-            {"file_name": r.file_name, "original_name": r.original_name, "title": r.title, "status": r.status, "file_path": r.file_path}
+            {
+                "file_name": r.file_name, 
+                "original_name": r.original_name, 
+                "title": r.title, 
+                "status": r.status, 
+                "file_path": r.file_path,
+                "review_status": r.review_status,
+                "review_report": r.review_report
+            }
             for r in results
         ]
         tasks[task_id]["status"] = "completed"
@@ -180,7 +188,9 @@ def run_single_file_task(
             "original_name": result.original_name,
             "title": result.title,
             "status": result.status,
-            "file_path": result.file_path
+            "file_path": result.file_path,
+            "review_status": result.review_status,
+            "review_report": result.review_report
         }]
         tasks[task_id]["status"] = "completed"
         get_log_callback(task_id)("\nАнализ завершён")
@@ -452,13 +462,15 @@ async def regenerate_title(req: RegenerateRequest):
     # Полный цикл: Перевод -> Аннотация -> Проверка
     working_text = ollama.translate_text(text)
     initial = ollama.generate_annotation(working_text, filename)
-    final_title = ollama.review_annotation(working_text, initial)
+    final_title, review_status, review_report = ollama.review_annotation(working_text, initial)
     
     for r in task_results[req.task_id]:
         if r["file_name"] == filename or r["original_name"] == req.file_name:
             r["title"] = final_title
             r["status"] = "success"
-            return {"ok": True, "title": final_title}
+            r["review_status"] = review_status
+            r["review_report"] = review_report
+            return {"ok": True, "title": final_title, "review_status": review_status, "review_report": review_report}
             
     raise HTTPException(status_code=404, detail="Файл не найден в результатах")
 
