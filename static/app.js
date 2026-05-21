@@ -101,18 +101,24 @@ async function loadModels() {
 // Check connection
 async function checkConnection() {
   const statusDiv = document.getElementById('connectionStatus');
+  // По умолчанию не показываем статус пока не проверили
+  statusDiv.innerHTML = '<span class="badge bg-secondary"><i class="bi bi-hourglass-split me-1"></i>Проверка...</span>';
+  
   try {
     const res = await fetch(`${API}/test-connection`);
     const data = await res.json();
     console.log('checkConnection: response', data);
+    
     if (data.connected) {
-      statusDiv.innerHTML = '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Ollama: ' + data.base_url + '</span>';
+      statusDiv.innerHTML = '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Подключено</span>';
     } else {
-      statusDiv.innerHTML = '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Ollama недоступна</span>';
+      // Скрываем статус если Ollama недоступна (не показываем красное)
+      statusDiv.innerHTML = '';
     }
   } catch (err) {
     console.error('checkConnection: error', err);
-    statusDiv.innerHTML = '<span class="badge bg-warning"><i class="bi bi-exclamation-triangle me-1"></i>Не проверено</span>';
+    // Скрываем статус при ошибке (не показываем красное)
+    statusDiv.innerHTML = '';
   }
 }
 
@@ -323,6 +329,10 @@ document.getElementById('runFolder').onclick = async () => {
         stopBtn.classList.add('d-none');
         document.getElementById('progressBar').style.width = st.status === 'cancelled' ? '0%' : '100%';
         document.getElementById('progressBar').classList.remove('progress-bar-animated');
+        // Скрываем прогресс через 1 секунду после завершения
+        setTimeout(() => {
+          document.getElementById('progressSection').classList.add('d-none');
+        }, 1000);
         if (st.status === 'completed') await loadResults(currentTaskId);
         if (st.status === 'cancelled') {
           currentTaskId = null;

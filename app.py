@@ -382,7 +382,7 @@ async def get_available_models():
         }
 
 
-@app.post("/api/test-connection")
+@app.get("/api/test-connection")
 async def test_connection():
     """Проверить подключение к Ollama."""
     ollama = OllamaClient()
