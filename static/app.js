@@ -19,10 +19,8 @@ function setTheme(theme) {
   localStorage.setItem('theme', theme);
   
   const icon = document.getElementById('themeIcon');
-  if (theme === 'dark') {
-    icon.className = 'bi bi-sun-fill';
-  } else {
-    icon.className = 'bi bi-moon-fill';
+  if (icon) {
+    icon.className = theme === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-fill';
   }
 }
 
@@ -32,11 +30,14 @@ function toggleTheme() {
   setTheme(newTheme);
 }
 
-document.getElementById('themeToggle').addEventListener('click', toggleTheme);
-
 // Initialize app
 async function initializeApp() {
   initTheme();
+  
+  // Theme toggle
+  const themeBtn = document.getElementById('themeToggle');
+  if (themeBtn) themeBtn.addEventListener('click', toggleTheme);
+  
   await loadModels();
   await checkConnection();
 }
@@ -150,47 +151,50 @@ async function checkConnection() {
 }
 
 // Refresh models
-document.getElementById('refreshModels').onclick = async () => {
-  const btn = document.getElementById('refreshModels');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Загрузка...';
-  await loadModels();
-  btn.disabled = false;
-  btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Обновить список моделей';
-};
+const refreshBtn = document.getElementById('refreshModels');
+if (refreshBtn) {
+  refreshBtn.onclick = async () => {
+    const btn = document.getElementById('refreshModels');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Загрузка...';
+    await loadModels();
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Обновить список моделей';
+  };
+}
 
 // Reset models to defaults
-document.getElementById('resetModels').onclick = () => {
-  document.getElementById('translateModel').selectedIndex = 0;
-  document.getElementById('annotateModel').selectedIndex = 0;
-  document.getElementById('reviewModel').selectedIndex = 0;
-};
-
-// Validate model selection
-function validateModels() {
-  const translateModel = document.getElementById('translateModel').value;
-  const annotateModel = document.getElementById('annotateModel').value;
-  const reviewModel = document.getElementById('reviewModel').value;
-
-  const errors = [];
-  if (!translateModel) errors.push('Модель перевода');
-  if (!annotateModel) errors.push('Модель аннотирования');
-  if (!reviewModel) errors.push('Модель проверки');
-
-  if (errors.length > 0) {
-    showValidationError('Выберите модели: ' + errors.join(', '));
-    return false;
-  }
-
-  clearValidationError();
-  return true;
+const resetBtn = document.getElementById('resetModels');
+if (resetBtn) {
+  resetBtn.onclick = () => {
+    document.getElementById('translateModel').selectedIndex = 0;
+    document.getElementById('annotateModel').selectedIndex = 0;
+    document.getElementById('reviewModel').selectedIndex = 0;
+  };
 }
 
 // Toggle model settings icon
-document.querySelector('[data-bs-toggle="collapse"][data-bs-target="#modelSettings"]').addEventListener('click', () => {
-  const icon = document.getElementById('modelSettingsIcon');
-  icon.classList.toggle('bi-chevron-down');
-  icon.classList.toggle('bi-chevron-up');
+const modelSettingsToggle = document.querySelector('[data-bs-toggle="collapse"][data-bs-target="#modelSettings"]');
+if (modelSettingsToggle) {
+  modelSettingsToggle.addEventListener('click', () => {
+    const icon = document.getElementById('modelSettingsIcon');
+    if (icon) {
+      icon.classList.toggle('bi-chevron-down');
+      icon.classList.toggle('bi-chevron-up');
+    }
+  });
+}
+
+// Mode switching
+document.querySelectorAll('[data-mode]').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    document.querySelectorAll('.nav-pills .nav-link').forEach(l => l.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('folderSection').classList.remove('active');
+    document.getElementById('fileSection').classList.remove('active');
+    document.getElementById(btn.dataset.mode === 'folder' ? 'folderSection' : 'fileSection').classList.add('active');
+  });
 });
 
 // Mode switching
@@ -207,7 +211,14 @@ document.querySelectorAll('[data-mode]').forEach(btn => {
 
 // Browse folder
 let browseTarget = null;
-const browseModal = new bootstrap.Modal(document.getElementById('browseModal'));
+let browseModalInstance = null;
+
+const initBrowseModal = () => {
+  if (!browseModalInstance) {
+    browseModalInstance = new bootstrap.Modal(document.getElementById('browseModal'));
+  }
+  return browseModalInstance;
+};
 
 async function loadBrowse(path = '') {
   const res = await fetch(`${API}/browse?path=${encodeURIComponent(path)}`);
@@ -243,150 +254,281 @@ async function loadBrowse(path = '') {
     list.appendChild(a);
   });
 }
+  
+const browseSourceBtn = document.getElementById('browseSource');
+if (browseSourceBtn) {
+  browseSourceBtn.onclick = () => {
+    browseTarget = 'source';
+    document.getElementById('browsePath').value = document.getElementById('sourceFolder').value;
+    loadBrowse(document.getElementById('sourceFolder').value || undefined);
+    initBrowseModal().show();
+  };
+}
 
-document.getElementById('browseSource').onclick = () => {
-  browseTarget = 'source';
-  document.getElementById('browsePath').value = document.getElementById('sourceFolder').value;
-  loadBrowse(document.getElementById('sourceFolder').value || undefined);
-  browseModal.show();
-};
+const browseOutputBtn = document.getElementById('browseOutput');
+if (browseOutputBtn) {
+  browseOutputBtn.onclick = () => {
+    browseTarget = 'output';
+    document.getElementById('browsePath').value = document.getElementById('outputFolder').value;
+    loadBrowse(document.getElementById('outputFolder').value || undefined);
+    initBrowseModal().show();
+  };
+}
 
-document.getElementById('browseOutput').onclick = () => {
-  browseTarget = 'output';
-  document.getElementById('browsePath').value = document.getElementById('outputFolder').value;
-  loadBrowse(document.getElementById('outputFolder').value || undefined);
-  browseModal.show();
-};
-
-document.getElementById('browsePath').addEventListener('change', () => {
-  loadBrowse(document.getElementById('browsePath').value);
-});
+const browsePathInput = document.getElementById('browsePath');
+if (browsePathInput) {
+  browsePathInput.addEventListener('change', () => {
+    loadBrowse(browsePathInput.value);
+  });
+  
+  browsePathInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      loadBrowse(browsePathInput.value);
+    }
+  });
+}
 
 // Path is set only when user clicks "Выбрать эту папку"
-
-document.getElementById('selectFolderBtn').onclick = () => {
-  const path = document.getElementById('browsePath').value;
-  if (path && browseTarget) {
-    if (browseTarget === 'source') document.getElementById('sourceFolder').value = path;
-    else document.getElementById('outputFolder').value = path;
-    browseModal.hide();
-  }
-};
-
-document.getElementById('browsePath').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    loadBrowse(document.getElementById('browsePath').value);
-  }
-});
+const selectFolderBtn = document.getElementById('selectFolderBtn');
+if (selectFolderBtn) {
+  selectFolderBtn.onclick = () => {
+    const path = document.getElementById('browsePath').value;
+    if (path && browseTarget) {
+      if (browseTarget === 'source') document.getElementById('sourceFolder').value = path;
+      else document.getElementById('outputFolder').value = path;
+      initBrowseModal().hide();
+    }
+  };
+}
 
 // Run folder analysis
-document.getElementById('runFolder').onclick = async () => {
-  const source = document.getElementById('sourceFolder').value.trim().replace(/^["']|["']$/g, '');
-  const output = document.getElementById('outputFolder').value.trim().replace(/^["']|["']$/g, '');
-  if (!source) return showValidationError('Укажите исходную папку');
-  if (!output) return showValidationError('Укажите папку для сохранения');
-  if (!validateModels()) return;
+const runFolderBtn = document.getElementById('runFolder');
+if (runFolderBtn) {
+  runFolderBtn.onclick = async () => {
+    const source = document.getElementById('sourceFolder').value.trim().replace(/^["']|["']$/g, '');
+    const output = document.getElementById('outputFolder').value.trim().replace(/^["']|["']$/g, '');
+    if (!source) return showValidationError('Укажите исходную папку');
+    if (!output) return showValidationError('Укажите папку для сохранения');
+    if (!validateModels()) return;
 
-  const btn = document.getElementById('runFolder');
-  const stopBtn = document.getElementById('stopFolder');
-  btn.disabled = true;
-  stopBtn.classList.remove('d-none');
-  document.getElementById('progressSection').classList.remove('d-none');
-  document.getElementById('logSection').classList.remove('d-none');
-  document.getElementById('logShow').classList.add('d-none');
-  document.getElementById('logPanel').innerHTML = '';
+    const btn = document.getElementById('runFolder');
+    const stopBtn = document.getElementById('stopFolder');
+    btn.disabled = true;
+    stopBtn.classList.remove('d-none');
+    document.getElementById('progressSection').classList.remove('d-none');
+    document.getElementById('logSection').classList.remove('d-none');
+    document.getElementById('logShow').classList.add('d-none');
+    document.getElementById('logPanel').innerHTML = '';
 
-  try {
-    const res = await fetch(`${API}/analyze-folder`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source_folder: source,
-        output_folder: output,
-        translate_model: document.getElementById('translateModel').value || null,
-        annotate_model: document.getElementById('annotateModel').value || null,
-        review_model: document.getElementById('reviewModel').value || null,
-        enable_translation: document.getElementById('enableTranslation').checked,
-        enable_review: document.getElementById('enableReview').checked
-      })
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      // Pydantic validation errors come as array of objects
-      let errorMsg = 'Ошибка';
-      if (data.detail) {
-        if (Array.isArray(data.detail)) {
-          errorMsg = data.detail.map(e => {
-            if (typeof e === 'string') return e;
-            if (e.msg) return e.msg;
-            return JSON.stringify(e);
-          }).join('; ');
-        } else if (typeof data.detail === 'string') {
-          errorMsg = data.detail;
-        } else {
-          errorMsg = JSON.stringify(data.detail);
+    try {
+      const res = await fetch(`${API}/analyze-folder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source_folder: source,
+          output_folder: output,
+          translate_model: document.getElementById('translateModel').value || null,
+          annotate_model: document.getElementById('annotateModel').value || null,
+          review_model: document.getElementById('reviewModel').value || null,
+          enable_translation: document.getElementById('enableTranslation').checked,
+          enable_review: document.getElementById('enableReview').checked
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        let errorMsg = 'Ошибка';
+        if (data.detail) {
+          if (Array.isArray(data.detail)) {
+            errorMsg = data.detail.map(e => {
+              if (typeof e === 'string') return e;
+              if (e.msg) return e.msg;
+              return JSON.stringify(e);
+            }).join('; ');
+          } else if (typeof data.detail === 'string') {
+            errorMsg = data.detail;
+          } else {
+            errorMsg = JSON.stringify(data.detail);
+          }
         }
-      }
-      showValidationError(errorMsg);
-      btn.disabled = false;
-      stopBtn.classList.add('d-none');
-      return;
-    }
-    currentTaskId = data.task_id;
-
-    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${location.host}/ws/logs/${data.task_id}`);
-    ws.onmessage = (ev) => {
-      const div = document.getElementById('logPanel');
-      const line = document.createElement('div');
-      line.className = 'log-line';
-      line.textContent = ev.data;
-      div.appendChild(line);
-      div.scrollTop = div.scrollHeight;
-    };
-
-    const checkStatus = setInterval(async () => {
-      const s = await fetch(`${API}/status/${currentTaskId}`);
-      const st = await s.json();
-      if (st.status === 'completed' || st.status === 'failed' || st.status === 'cancelled') {
-        clearInterval(checkStatus);
-        ws.close();
+        showValidationError(errorMsg);
         btn.disabled = false;
         stopBtn.classList.add('d-none');
-        document.getElementById('progressBar').style.width = st.status === 'cancelled' ? '0%' : '100%';
-        document.getElementById('progressBar').classList.remove('progress-bar-animated');
-        // Скрываем прогресс через 1 секунду после завершения
-        setTimeout(() => {
-          document.getElementById('progressSection').classList.add('d-none');
-        }, 1000);
-        if (st.status === 'completed') await loadResults(currentTaskId);
+        return;
+      }
+      currentTaskId = data.task_id;
+
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(`${protocol}//${location.host}/ws/logs/${data.task_id}`);
+      ws.onmessage = (ev) => {
+        const div = document.getElementById('logPanel');
+        const line = document.createElement('div');
+        line.className = 'log-line';
+        line.textContent = ev.data;
+        div.appendChild(line);
+        div.scrollTop = div.scrollHeight;
+      };
+
+      const checkStatus = setInterval(async () => {
+        const s = await fetch(`${API}/status/${currentTaskId}`);
+        const st = await s.json();
+        if (st.status === 'completed' || st.status === 'failed' || st.status === 'cancelled') {
+          clearInterval(checkStatus);
+          ws.close();
+          btn.disabled = false;
+          stopBtn.classList.add('d-none');
+          document.getElementById('progressBar').style.width = st.status === 'cancelled' ? '0%' : '100%';
+          document.getElementById('progressBar').classList.remove('progress-bar-animated');
+          setTimeout(() => {
+            document.getElementById('progressSection').classList.add('d-none');
+          }, 1000);
+          if (st.status === 'completed') await loadResults(currentTaskId);
+          if (st.status === 'cancelled') {
+            currentTaskId = null;
+            currentResults = [];
+            renderTable([]);
+            document.getElementById('progressSection').classList.add('d-none');
+          }
+        }
+      }, 1000);
+    } catch (err) {
+      showValidationError(err.message);
+      btn.disabled = false;
+      document.getElementById('stopFolder').classList.add('d-none');
+    }
+  };
+}
+
+// Stop folder analysis
+const stopFolderBtn = document.getElementById('stopFolder');
+if (stopFolderBtn) {
+  stopFolderBtn.onclick = async () => {
+    if (!currentTaskId) return;
+    const stopBtn = document.getElementById('stopFolder');
+    stopBtn.disabled = true;
+    try {
+      await fetch(`${API}/cancel-task`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_id: currentTaskId })
+      });
+      const poll = async () => {
+        const s = await fetch(`${API}/status/${currentTaskId}`);
+        const st = await s.json();
         if (st.status === 'cancelled') {
           currentTaskId = null;
           currentResults = [];
           renderTable([]);
+          document.getElementById('runFolder').disabled = false;
+          stopBtn.classList.add('d-none');
+          stopBtn.disabled = false;
           document.getElementById('progressSection').classList.add('d-none');
+        } else {
+          setTimeout(poll, 500);
         }
-      }
-    }, 1000);
-  } catch (err) {
-    showValidationError(err.message);
-    btn.disabled = false;
-    document.getElementById('stopFolder').classList.add('d-none');
-  }
-};
+      };
+      poll();
+    } catch (e) {
+      stopBtn.disabled = false;
+      showValidationError('Ошибка остановки');
+    }
+  };
+}
 
-// Stop folder analysis
-document.getElementById('stopFolder').onclick = async () => {
-  if (!currentTaskId) return;
-  const stopBtn = document.getElementById('stopFolder');
-  stopBtn.disabled = true;
-  try {
-    await fetch(`${API}/cancel-task`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ task_id: currentTaskId })
+// Single file - drag & drop
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+if (dropZone) {
+  dropZone.onclick = () => fileInput.click();
+
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(ev => {
+    dropZone.addEventListener(ev, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
     });
+  });
+
+  dropZone.addEventListener('dragenter', () => dropZone.classList.add('dragover'));
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('dragover', () => dropZone.classList.add('dragover'));
+  dropZone.addEventListener('drop', (e) => {
+    dropZone.classList.remove('dragover');
+    const f = e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  });
+}
+
+if (fileInput) {
+  fileInput.onchange = () => {
+    const f = fileInput.files[0];
+    if (f) handleFile(f);
+  };
+}
+
+// Log panel controls
+const logResetBtn = document.getElementById('logReset');
+if (logResetBtn) {
+  logResetBtn.onclick = () => {
+    document.getElementById('logPanel').innerHTML = '';
+  };
+}
+
+const logHideBtn = document.getElementById('logHide');
+if (logHideBtn) {
+  logHideBtn.onclick = () => {
+    document.getElementById('logSection').classList.add('d-none');
+    document.getElementById('logShow').classList.remove('d-none');
+  };
+}
+
+const logShowBtn = document.getElementById('logShow');
+if (logShowBtn) {
+  logShowBtn.onclick = () => {
+    document.getElementById('logSection').classList.remove('d-none');
+    document.getElementById('logShow').classList.add('d-none');
+  };
+}
+
+// Export buttons
+const exportCsvBtn = document.getElementById('exportCsv');
+if (exportCsvBtn) {
+  exportCsvBtn.onclick = () => {
+    const url = exportUrl('csv');
+    if (url) window.open(url, '_blank');
+  };
+}
+
+const exportExcelBtn = document.getElementById('exportExcel');
+if (exportExcelBtn) {
+  exportExcelBtn.onclick = () => {
+    const url = exportUrl('excel');
+    if (url) window.open(url, '_blank');
+  };
+}
+
+// Reset results
+const resetResultsBtn = document.getElementById('resetResults');
+if (resetResultsBtn) {
+  resetResultsBtn.onclick = () => {
+    currentTaskId = null;
+    currentResults = [];
+    document.querySelectorAll('[data-filter]').forEach(b => { b.classList.remove('active'); if (b.dataset.filter === 'all') b.classList.add('active'); });
+    currentFilter = 'all';
+    document.getElementById('searchInput').value = '';
+    renderTable([]);
+  };
+}
+
+// Filters
+document.querySelectorAll('[data-filter]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-filter]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentFilter = btn.dataset.filter;
+    renderTable(currentResults);
+  });
+});
     const poll = async () => {
       const s = await fetch(`${API}/status/${currentTaskId}`);
       const st = await s.json();
@@ -408,7 +550,7 @@ document.getElementById('stopFolder').onclick = async () => {
     showValidationError('Ошибка остановки');
   }
 };
-
+  
 // Single file - drag & drop
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
