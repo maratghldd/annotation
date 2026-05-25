@@ -310,32 +310,59 @@ async function runFolderAnalysis() {
 async function stopFolderAnalysis() {
   if (!currentTaskId) return;
   const stopBtn = $('stopFolder');
+  const runBtn = $('runFolder');
+  
+  // Сразу визуально показываем остановку
   stopBtn.disabled = true;
+  stopBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Остановка...';
+  $('progressBar').classList.remove('progress-bar-animated');
+  $('progressBar').style.width = '50%';
+  
   try {
     await fetch(`${API}/cancel-task`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ task_id: currentTaskId })
     });
+    
+    // Быстрый опрос статуса (каждые 200мс)
     const poll = async () => {
-      const s = await fetch(`${API}/status/${currentTaskId}`);
-      const st = await s.json();
-      if (st.status === 'cancelled') {
+      try {
+        const s = await fetch(`${API}/status/${currentTaskId}`);
+        const st = await s.json();
+        
+        if (st.status === 'cancelled' || st.status === 'failed') {
+          currentTaskId = null;
+          currentResults = [];
+          renderTable([]);
+          runBtn.disabled = false;
+          stopBtn.classList.add('d-none');
+          stopBtn.disabled = false;
+          stopBtn.innerHTML = '<i class="bi bi-stop-fill me-2"></i>Остановить';
+          $('progressSection').classList.add('d-none');
+          $('logPanel').innerHTML += '\n⏹ Остановлено пользователем';
+        } else {
+          setTimeout(poll, 200);
+        }
+      } catch (e) {
+        console.error('[stop poll]:', e);
+        // При ошибке тоже завершаем
         currentTaskId = null;
         currentResults = [];
         renderTable([]);
-        $('runFolder').disabled = false;
+        runBtn.disabled = false;
         stopBtn.classList.add('d-none');
         stopBtn.disabled = false;
+        stopBtn.innerHTML = '<i class="bi bi-stop-fill me-2"></i>Остановить';
         $('progressSection').classList.add('d-none');
-      } else {
-        setTimeout(poll, 500);
       }
     };
     poll();
+    
   } catch (e) {
     stopBtn.disabled = false;
-    showValidationError('Ошибка остановки');
+    stopBtn.innerHTML = '<i class="bi bi-stop-fill me-2"></i>Остановить';
+    showValidationError('Ошибка остановки: ' + e.message);
   }
 }
 
@@ -400,7 +427,7 @@ async function handleFile(file) {
     resultDiv.classList.add('alert-danger');
   }
 }
-
+  
 // ============ Результаты и таблица ============
 async function loadResults(taskId) {
   const res = await fetch(`${API}/results/${taskId}`);
@@ -466,7 +493,7 @@ function renderTable(results) {
       </td>
       <td><div class="actions-cell">
         ${(r.status === 'success' && (r.file_path || r.file_name)) ? `<a href="${API}/files/${currentTaskId}/${encodeURIComponent(r.file_name || r.original_name || '')}" target="_blank" class="btn btn-sm btn-outline-secondary" title="Открыть файл"><i class="bi bi-folder2-open"></i></a>` : ''}
-        ${(r.status === 'success' && (r.file_path || r.file_name)) ? `<button type="button" class="btn btn-sm btn-outline-secondary regenerate-btn" data-file-name="${escapeHtml(r.file_name || '')}" data-original-name="${escapeHtml(r.original_name || '')}" title="Перегенерировать"><i class="bi bi-arrow-clockwise"></i></button>` : ''}
+        ${(r.file_path || r.file_name) ? `<button type="button" class="btn btn-sm btn-outline-secondary regenerate-btn" data-file-name="${escapeHtml(r.file_name || '')}" data-original-name="${escapeHtml(r.original_name || '')}" title="Перегенерировать"><i class="bi bi-arrow-clockwise"></i></button>` : ''}
         <button type="button" class="btn btn-sm btn-outline-secondary copy-title-btn" data-title="${escapeHtml(r.title || '')}" title="Скопировать"><i class="bi bi-clipboard"></i></button>
       </div></td>
     </tr>`;
