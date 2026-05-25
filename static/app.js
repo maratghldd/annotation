@@ -1,5 +1,7 @@
 /** Document Analyzer - Web UI */
 const API = '/api';
+
+// ============ Глобальное состояние ============
 let currentTaskId = null;
 let currentResults = [];
 let currentFilter = 'all';
@@ -7,8 +9,47 @@ let sortColumn = 'original_name';
 let sortAsc = true;
 let availableModels = [];
 let currentPipelineConfig = {};
+let browseTarget = null;
+let browseModalInstance = null;
 
-// Theme management
+// ============ Утилиты ============
+function $(id) { return document.getElementById(id); }
+
+function escapeHtml(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function showValidationError(message) {
+  const errorMsg = $('validationError');
+  if (errorMsg) {
+    errorMsg.innerHTML = `
+      <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <strong>Ошибка:</strong> ${escapeHtml(message)}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    `;
+    errorMsg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
+function clearValidationError() {
+  const errorMsg = $('validationError');
+  if (errorMsg) errorMsg.innerHTML = '';
+}
+
+function parseError(data) {
+  if (!data || !data.detail) return 'Неизвестная ошибка';
+  if (Array.isArray(data.detail)) {
+    return data.detail.map(e => typeof e === 'string' ? e : (e.msg || JSON.stringify(e))).join('; ');
+  }
+  if (typeof data.detail === 'string') return data.detail;
+  return JSON.stringify(data.detail);
+}
+
+// ============ Тема ============
 function initTheme() {
   const savedTheme = localStorage.getItem('theme') || 'light';
   setTheme(savedTheme);
@@ -17,82 +58,46 @@ function initTheme() {
 function setTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   localStorage.setItem('theme', theme);
-  
-  const icon = document.getElementById('themeIcon');
+  const icon = $('themeIcon');
   if (icon) {
     icon.className = theme === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-fill';
   }
 }
 
 function toggleTheme() {
-  const currentTheme = document.documentElement.getAttribute('data-theme');
-  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-  setTheme(newTheme);
+  const current = document.documentElement.getAttribute('data-theme');
+  setTheme(current === 'dark' ? 'light' : 'dark');
 }
 
-// Initialize app
-async function initializeApp() {
-  initTheme();
-  
-  // Theme toggle
-  const themeBtn = document.getElementById('themeToggle');
-  if (themeBtn) themeBtn.addEventListener('click', toggleTheme);
-  
-  await loadModels();
-  await checkConnection();
-}
-
-// Show validation error in UI
-function showValidationError(message) {
-  const errorMsg = document.getElementById('validationError');
-  if (errorMsg) {
-    errorMsg.innerHTML = `
-      <div class="alert alert-danger alert-dismissible fade show" role="alert">
-        <strong>Ошибка:</strong> ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-      </div>
-    `;
-    errorMsg.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }
-}
-
-// Clear validation error
-function clearValidationError() {
-  const errorMsg = document.getElementById('validationError');
-  if (errorMsg) errorMsg.innerHTML = '';
-}
-
-// Load available models
+// ============ Загрузка моделей ============
 async function loadModels() {
-  console.log('loadModels: starting...');
+  console.log('[loadModels] starting...');
+  
+  // Показываем состояние "загрузка"
+  ['translateModel', 'annotateModel', 'reviewModel'].forEach(id => {
+    const sel = $(id);
+    if (sel) sel.innerHTML = '<option value="" disabled selected>Загрузка...</option>';
+  });
+
   try {
     const res = await fetch(`${API}/models`);
-    console.log('loadModels: response status', res.status);
+    console.log('[loadModels] status:', res.status);
 
-    if (!res.ok) {
-      throw new Error('Сервер вернул ошибку: ' + res.status);
-    }
+    if (!res.ok) throw new Error('Сервер вернул ошибку: ' + res.status);
 
     const data = await res.json();
-    console.log('loadModels: response data', data);
+    console.log('[loadModels] models:', data.available_models?.length);
 
     availableModels = data.available_models || [];
     currentPipelineConfig = data.pipeline_config || {};
-    console.log('loadModels: available models count', availableModels.length);
 
-    // Populate model selectors
     const populateSelect = (selectId) => {
-      const select = document.getElementById(selectId);
-      if (!select) {
-        console.error('loadModels: select not found', selectId);
-        return;
-      }
-
+      const select = $(selectId);
+      if (!select) return;
       if (availableModels.length === 0) {
         select.innerHTML = '<option value="" disabled selected>Нет доступных моделей</option>';
         return;
       }
-
       select.innerHTML = '<option value="" disabled selected>-- Выберите модель --</option>';
       availableModels.forEach(model => {
         const option = document.createElement('option');
@@ -100,435 +105,218 @@ async function loadModels() {
         option.textContent = model;
         select.appendChild(option);
       });
-      console.log('loadModels: populated', selectId);
     };
 
     populateSelect('translateModel');
     populateSelect('annotateModel');
     populateSelect('reviewModel');
 
-    // Set pipeline config
-    document.getElementById('enableTranslation').checked = currentPipelineConfig.enable_translation !== false;
-    document.getElementById('enableReview').checked = currentPipelineConfig.enable_review !== false;
+    // Применяем конфигурацию pipeline
+    const enableTrans = $('enableTranslation');
+    if (enableTrans) enableTrans.checked = currentPipelineConfig.enable_translation !== false;
+    const enableRev = $('enableReview');
+    if (enableRev) enableRev.checked = currentPipelineConfig.enable_review !== false;
 
   } catch (err) {
-    console.error('loadModels: error', err);
+    console.error('[loadModels] error:', err);
     showValidationError('Не удалось загрузить список моделей: ' + err.message);
-    const setError = (id) => {
-      const select = document.getElementById(id);
-      if (select) {
-        select.innerHTML = '<option value="" disabled selected>Ошибка загрузки</option>';
-      }
-    };
-    setError('translateModel');
-    setError('annotateModel');
-    setError('reviewModel');
+    ['translateModel', 'annotateModel', 'reviewModel'].forEach(id => {
+      const sel = $(id);
+      if (sel) sel.innerHTML = '<option value="" disabled selected>Ошибка загрузки</option>';
+    });
   }
 }
 
-// Check connection
+// ============ Проверка подключения ============
 async function checkConnection() {
-  const statusDiv = document.getElementById('connectionStatus');
-  // По умолчанию не показываем статус пока не проверили
+  const statusDiv = $('connectionStatus');
+  if (!statusDiv) return;
+  
   statusDiv.innerHTML = '<span class="badge bg-secondary"><i class="bi bi-hourglass-split me-1"></i>Проверка...</span>';
   
   try {
     const res = await fetch(`${API}/test-connection`);
     const data = await res.json();
-    console.log('checkConnection: response', data);
-    
     if (data.connected) {
       statusDiv.innerHTML = '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Подключено</span>';
     } else {
-      // Скрываем статус если Ollama недоступна (не показываем красное)
       statusDiv.innerHTML = '';
     }
   } catch (err) {
-    console.error('checkConnection: error', err);
-    // Скрываем статус при ошибке (не показываем красное)
+    console.error('[checkConnection]:', err);
     statusDiv.innerHTML = '';
   }
 }
 
-// Refresh models
-const refreshBtn = document.getElementById('refreshModels');
-if (refreshBtn) {
-  refreshBtn.onclick = async () => {
-    const btn = document.getElementById('refreshModels');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Загрузка...';
-    await loadModels();
-    btn.disabled = false;
-    btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Обновить список моделей';
-  };
+// ============ Валидация моделей ============
+function validateModels() {
+  const translateModel = $('translateModel')?.value;
+  const annotateModel = $('annotateModel')?.value;
+  const reviewModel = $('reviewModel')?.value;
+
+  const errors = [];
+  if (!translateModel) errors.push('Модель перевода');
+  if (!annotateModel) errors.push('Модель аннотирования');
+  if (!reviewModel) errors.push('Модель проверки');
+
+  if (errors.length > 0) {
+    showValidationError('Выберите модели: ' + errors.join(', '));
+    return false;
+  }
+  clearValidationError();
+  return true;
 }
 
-// Reset models to defaults
-const resetBtn = document.getElementById('resetModels');
-if (resetBtn) {
-  resetBtn.onclick = () => {
-    document.getElementById('translateModel').selectedIndex = 0;
-    document.getElementById('annotateModel').selectedIndex = 0;
-    document.getElementById('reviewModel').selectedIndex = 0;
-  };
-}
-
-// Toggle model settings icon
-const modelSettingsToggle = document.querySelector('[data-bs-toggle="collapse"][data-bs-target="#modelSettings"]');
-if (modelSettingsToggle) {
-  modelSettingsToggle.addEventListener('click', () => {
-    const icon = document.getElementById('modelSettingsIcon');
-    if (icon) {
-      icon.classList.toggle('bi-chevron-down');
-      icon.classList.toggle('bi-chevron-up');
-    }
-  });
-}
-
-// Mode switching
-document.querySelectorAll('[data-mode]').forEach(btn => {
-  btn.addEventListener('click', (e) => {
-    e.preventDefault();
-    document.querySelectorAll('.nav-pills .nav-link').forEach(l => l.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('folderSection').classList.remove('active');
-    document.getElementById('fileSection').classList.remove('active');
-    document.getElementById(btn.dataset.mode === 'folder' ? 'folderSection' : 'fileSection').classList.add('active');
-  });
-});
-
-// Mode switching
-document.querySelectorAll('[data-mode]').forEach(btn => {
-  btn.addEventListener('click', (e) => {
-    e.preventDefault();
-    document.querySelectorAll('.nav-pills .nav-link').forEach(l => l.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('folderSection').classList.remove('active');
-    document.getElementById('fileSection').classList.remove('active');
-    document.getElementById(btn.dataset.mode === 'folder' ? 'folderSection' : 'fileSection').classList.add('active');
-  });
-});
-
-// Browse folder
-let browseTarget = null;
-let browseModalInstance = null;
-
-const initBrowseModal = () => {
+// ============ Обзор папок ============
+function initBrowseModal() {
   if (!browseModalInstance) {
-    browseModalInstance = new bootstrap.Modal(document.getElementById('browseModal'));
+    const modalEl = $('browseModal');
+    if (modalEl) browseModalInstance = new bootstrap.Modal(modalEl);
   }
   return browseModalInstance;
-};
+}
 
 async function loadBrowse(path = '') {
-  const res = await fetch(`${API}/browse?path=${encodeURIComponent(path)}`);
-  const data = await res.json();
-  document.getElementById('browsePath').value = data.path;
-  const list = document.getElementById('browseList');
-  list.innerHTML = '';
-  if (path) {
-    const parent = document.createElement('a');
-    parent.href = '#';
-    parent.className = 'list-group-item list-group-item-action';
-    parent.textContent = '.. (на уровень выше)';
-    parent.onclick = (e) => {
-      e.preventDefault();
-      const parts = data.path.replace(/\\/g, '/').split('/').filter(Boolean);
-      if (parts.length > 1) parts.pop();
-      else if (parts.length === 1 && parts[0].length > 2) parts.length = 0;
-      const parentPath = parts.length ? parts.join('/').replace(/^\/([a-zA-Z])/, '$1:\\').replace(/\//g, '\\') : '';
-      loadBrowse(parentPath || undefined);
-    };
-    list.appendChild(parent);
-  }
-  data.items.forEach(item => {
-    const a = document.createElement('a');
-    a.href = '#';
-    a.className = 'list-group-item list-group-item-action d-flex align-items-center';
-    a.innerHTML = `<i class="bi bi-${item.is_dir ? 'folder-fill text-warning' : 'file-earmark'} me-2"></i>${item.name}`;
-    a.onclick = (e) => {
-      e.preventDefault();
-      if (item.is_dir) loadBrowse(item.path);
-      else return;
-    };
-    list.appendChild(a);
-  });
-}
-  
-const browseSourceBtn = document.getElementById('browseSource');
-if (browseSourceBtn) {
-  browseSourceBtn.onclick = () => {
-    browseTarget = 'source';
-    document.getElementById('browsePath').value = document.getElementById('sourceFolder').value;
-    loadBrowse(document.getElementById('sourceFolder').value || undefined);
-    initBrowseModal().show();
-  };
-}
-
-const browseOutputBtn = document.getElementById('browseOutput');
-if (browseOutputBtn) {
-  browseOutputBtn.onclick = () => {
-    browseTarget = 'output';
-    document.getElementById('browsePath').value = document.getElementById('outputFolder').value;
-    loadBrowse(document.getElementById('outputFolder').value || undefined);
-    initBrowseModal().show();
-  };
-}
-
-const browsePathInput = document.getElementById('browsePath');
-if (browsePathInput) {
-  browsePathInput.addEventListener('change', () => {
-    loadBrowse(browsePathInput.value);
-  });
-  
-  browsePathInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      loadBrowse(browsePathInput.value);
-    }
-  });
-}
-
-// Path is set only when user clicks "Выбрать эту папку"
-const selectFolderBtn = document.getElementById('selectFolderBtn');
-if (selectFolderBtn) {
-  selectFolderBtn.onclick = () => {
-    const path = document.getElementById('browsePath').value;
-    if (path && browseTarget) {
-      if (browseTarget === 'source') document.getElementById('sourceFolder').value = path;
-      else document.getElementById('outputFolder').value = path;
-      initBrowseModal().hide();
-    }
-  };
-}
-
-// Run folder analysis
-const runFolderBtn = document.getElementById('runFolder');
-if (runFolderBtn) {
-  runFolderBtn.onclick = async () => {
-    const source = document.getElementById('sourceFolder').value.trim().replace(/^["']|["']$/g, '');
-    const output = document.getElementById('outputFolder').value.trim().replace(/^["']|["']$/g, '');
-    if (!source) return showValidationError('Укажите исходную папку');
-    if (!output) return showValidationError('Укажите папку для сохранения');
-    if (!validateModels()) return;
-
-    const btn = document.getElementById('runFolder');
-    const stopBtn = document.getElementById('stopFolder');
-    btn.disabled = true;
-    stopBtn.classList.remove('d-none');
-    document.getElementById('progressSection').classList.remove('d-none');
-    document.getElementById('logSection').classList.remove('d-none');
-    document.getElementById('logShow').classList.add('d-none');
-    document.getElementById('logPanel').innerHTML = '';
-
-    try {
-      const res = await fetch(`${API}/analyze-folder`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          source_folder: source,
-          output_folder: output,
-          translate_model: document.getElementById('translateModel').value || null,
-          annotate_model: document.getElementById('annotateModel').value || null,
-          review_model: document.getElementById('reviewModel').value || null,
-          enable_translation: document.getElementById('enableTranslation').checked,
-          enable_review: document.getElementById('enableReview').checked
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        let errorMsg = 'Ошибка';
-        if (data.detail) {
-          if (Array.isArray(data.detail)) {
-            errorMsg = data.detail.map(e => {
-              if (typeof e === 'string') return e;
-              if (e.msg) return e.msg;
-              return JSON.stringify(e);
-            }).join('; ');
-          } else if (typeof data.detail === 'string') {
-            errorMsg = data.detail;
-          } else {
-            errorMsg = JSON.stringify(data.detail);
-          }
-        }
-        showValidationError(errorMsg);
-        btn.disabled = false;
-        stopBtn.classList.add('d-none');
-        return;
-      }
-      currentTaskId = data.task_id;
-
-      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const ws = new WebSocket(`${protocol}//${location.host}/ws/logs/${data.task_id}`);
-      ws.onmessage = (ev) => {
-        const div = document.getElementById('logPanel');
-        const line = document.createElement('div');
-        line.className = 'log-line';
-        line.textContent = ev.data;
-        div.appendChild(line);
-        div.scrollTop = div.scrollHeight;
+  try {
+    const res = await fetch(`${API}/browse?path=${encodeURIComponent(path)}`);
+    const data = await res.json();
+    $('browsePath').value = data.path;
+    const list = $('browseList');
+    list.innerHTML = '';
+    
+    if (path) {
+      const parent = document.createElement('a');
+      parent.href = '#';
+      parent.className = 'list-group-item list-group-item-action';
+      parent.textContent = '.. (на уровень выше)';
+      parent.onclick = (e) => {
+        e.preventDefault();
+        const parts = data.path.replace(/\\/g, '/').split('/').filter(Boolean);
+        if (parts.length > 1) parts.pop();
+        else if (parts.length === 1 && parts[0].length > 2) parts.length = 0;
+        const parentPath = parts.length ? parts.join('/').replace(/^\/([a-zA-Z])/, '$1:\\').replace(/\//g, '\\') : '';
+        loadBrowse(parentPath || undefined);
       };
+      list.appendChild(parent);
+    }
+    
+    data.items.forEach(item => {
+      const a = document.createElement('a');
+      a.href = '#';
+      a.className = 'list-group-item list-group-item-action d-flex align-items-center';
+      a.innerHTML = `<i class="bi bi-${item.is_dir ? 'folder-fill text-warning' : 'file-earmark'} me-2"></i>${escapeHtml(item.name)}`;
+      a.onclick = (e) => {
+        e.preventDefault();
+        if (item.is_dir) loadBrowse(item.path);
+      };
+      list.appendChild(a);
+    });
+  } catch (err) {
+    console.error('[loadBrowse]:', err);
+    showValidationError('Не удалось загрузить список папок');
+  }
+}
 
-      const checkStatus = setInterval(async () => {
+// ============ Анализ папки ============
+async function runFolderAnalysis() {
+  const source = $('sourceFolder').value.trim().replace(/^["']|["']$/g, '');
+  const output = $('outputFolder').value.trim().replace(/^["']|["']$/g, '');
+  if (!source) return showValidationError('Укажите исходную папку');
+  if (!output) return showValidationError('Укажите папку для сохранения');
+  if (!validateModels()) return;
+
+  const btn = $('runFolder');
+  const stopBtn = $('stopFolder');
+  btn.disabled = true;
+  stopBtn.classList.remove('d-none');
+  $('progressSection').classList.remove('d-none');
+  $('logSection').classList.remove('d-none');
+  $('logShow').classList.add('d-none');
+  $('logPanel').innerHTML = '';
+  $('progressBar').style.width = '0%';
+  $('progressBar').classList.add('progress-bar-animated');
+
+  try {
+    const res = await fetch(`${API}/analyze-folder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_folder: source,
+        output_folder: output,
+        translate_model: $('translateModel').value,
+        annotate_model: $('annotateModel').value,
+        review_model: $('reviewModel').value,
+        enable_translation: $('enableTranslation').checked,
+        enable_review: $('enableReview').checked
+      })
+    });
+    const data = await res.json();
+    
+    if (!res.ok) {
+      showValidationError(parseError(data));
+      btn.disabled = false;
+      stopBtn.classList.add('d-none');
+      return;
+    }
+    
+    currentTaskId = data.task_id;
+
+    // WebSocket для логов
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${location.host}/ws/logs/${data.task_id}`);
+    ws.onmessage = (ev) => {
+      const div = $('logPanel');
+      const line = document.createElement('div');
+      line.className = 'log-line';
+      line.textContent = ev.data;
+      div.appendChild(line);
+      div.scrollTop = div.scrollHeight;
+    };
+
+    // Опрос статуса
+    const checkStatus = setInterval(async () => {
+      try {
         const s = await fetch(`${API}/status/${currentTaskId}`);
         const st = await s.json();
-        if (st.status === 'completed' || st.status === 'failed' || st.status === 'cancelled') {
+        if (['completed', 'failed', 'cancelled'].includes(st.status)) {
           clearInterval(checkStatus);
           ws.close();
           btn.disabled = false;
           stopBtn.classList.add('d-none');
-          document.getElementById('progressBar').style.width = st.status === 'cancelled' ? '0%' : '100%';
-          document.getElementById('progressBar').classList.remove('progress-bar-animated');
-          setTimeout(() => {
-            document.getElementById('progressSection').classList.add('d-none');
-          }, 1000);
+          $('progressBar').style.width = st.status === 'cancelled' ? '0%' : '100%';
+          $('progressBar').classList.remove('progress-bar-animated');
+          setTimeout(() => $('progressSection').classList.add('d-none'), 1000);
+          
           if (st.status === 'completed') await loadResults(currentTaskId);
           if (st.status === 'cancelled') {
             currentTaskId = null;
             currentResults = [];
             renderTable([]);
-            document.getElementById('progressSection').classList.add('d-none');
           }
         }
-      }, 1000);
-    } catch (err) {
-      showValidationError(err.message);
-      btn.disabled = false;
-      document.getElementById('stopFolder').classList.add('d-none');
-    }
-  };
+      } catch (e) {
+        console.error('[checkStatus]:', e);
+      }
+    }, 1000);
+    
+  } catch (err) {
+    showValidationError(err.message);
+    btn.disabled = false;
+    stopBtn.classList.add('d-none');
+  }
 }
 
-// Stop folder analysis
-const stopFolderBtn = document.getElementById('stopFolder');
-if (stopFolderBtn) {
-  stopFolderBtn.onclick = async () => {
-    if (!currentTaskId) return;
-    const stopBtn = document.getElementById('stopFolder');
-    stopBtn.disabled = true;
-    try {
-      await fetch(`${API}/cancel-task`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task_id: currentTaskId })
-      });
-      const poll = async () => {
-        const s = await fetch(`${API}/status/${currentTaskId}`);
-        const st = await s.json();
-        if (st.status === 'cancelled') {
-          currentTaskId = null;
-          currentResults = [];
-          renderTable([]);
-          document.getElementById('runFolder').disabled = false;
-          stopBtn.classList.add('d-none');
-          stopBtn.disabled = false;
-          document.getElementById('progressSection').classList.add('d-none');
-        } else {
-          setTimeout(poll, 500);
-        }
-      };
-      poll();
-    } catch (e) {
-      stopBtn.disabled = false;
-      showValidationError('Ошибка остановки');
-    }
-  };
-}
-
-// Single file - drag & drop
-const dropZone = document.getElementById('dropZone');
-const fileInput = document.getElementById('fileInput');
-
-if (dropZone) {
-  dropZone.onclick = () => fileInput.click();
-
-  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(ev => {
-    dropZone.addEventListener(ev, (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+// ============ Остановка анализа ============
+async function stopFolderAnalysis() {
+  if (!currentTaskId) return;
+  const stopBtn = $('stopFolder');
+  stopBtn.disabled = true;
+  try {
+    await fetch(`${API}/cancel-task`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task_id: currentTaskId })
     });
-  });
-
-  dropZone.addEventListener('dragenter', () => dropZone.classList.add('dragover'));
-  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-  dropZone.addEventListener('dragover', () => dropZone.classList.add('dragover'));
-  dropZone.addEventListener('drop', (e) => {
-    dropZone.classList.remove('dragover');
-    const f = e.dataTransfer.files[0];
-    if (f) handleFile(f);
-  });
-}
-
-if (fileInput) {
-  fileInput.onchange = () => {
-    const f = fileInput.files[0];
-    if (f) handleFile(f);
-  };
-}
-
-// Log panel controls
-const logResetBtn = document.getElementById('logReset');
-if (logResetBtn) {
-  logResetBtn.onclick = () => {
-    document.getElementById('logPanel').innerHTML = '';
-  };
-}
-
-const logHideBtn = document.getElementById('logHide');
-if (logHideBtn) {
-  logHideBtn.onclick = () => {
-    document.getElementById('logSection').classList.add('d-none');
-    document.getElementById('logShow').classList.remove('d-none');
-  };
-}
-
-const logShowBtn = document.getElementById('logShow');
-if (logShowBtn) {
-  logShowBtn.onclick = () => {
-    document.getElementById('logSection').classList.remove('d-none');
-    document.getElementById('logShow').classList.add('d-none');
-  };
-}
-
-// Export buttons
-const exportCsvBtn = document.getElementById('exportCsv');
-if (exportCsvBtn) {
-  exportCsvBtn.onclick = () => {
-    const url = exportUrl('csv');
-    if (url) window.open(url, '_blank');
-  };
-}
-
-const exportExcelBtn = document.getElementById('exportExcel');
-if (exportExcelBtn) {
-  exportExcelBtn.onclick = () => {
-    const url = exportUrl('excel');
-    if (url) window.open(url, '_blank');
-  };
-}
-
-// Reset results
-const resetResultsBtn = document.getElementById('resetResults');
-if (resetResultsBtn) {
-  resetResultsBtn.onclick = () => {
-    currentTaskId = null;
-    currentResults = [];
-    document.querySelectorAll('[data-filter]').forEach(b => { b.classList.remove('active'); if (b.dataset.filter === 'all') b.classList.add('active'); });
-    currentFilter = 'all';
-    document.getElementById('searchInput').value = '';
-    renderTable([]);
-  };
-}
-
-// Filters
-document.querySelectorAll('[data-filter]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('[data-filter]').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentFilter = btn.dataset.filter;
-    renderTable(currentResults);
-  });
-});
     const poll = async () => {
       const s = await fetch(`${API}/status/${currentTaskId}`);
       const st = await s.json();
@@ -536,10 +324,10 @@ document.querySelectorAll('[data-filter]').forEach(btn => {
         currentTaskId = null;
         currentResults = [];
         renderTable([]);
-        document.getElementById('runFolder').disabled = false;
+        $('runFolder').disabled = false;
         stopBtn.classList.add('d-none');
         stopBtn.disabled = false;
-        document.getElementById('progressSection').classList.add('d-none');
+        $('progressSection').classList.add('d-none');
       } else {
         setTimeout(poll, 500);
       }
@@ -549,73 +337,35 @@ document.querySelectorAll('[data-filter]').forEach(btn => {
     stopBtn.disabled = false;
     showValidationError('Ошибка остановки');
   }
-};
-  
-// Single file - drag & drop
-const dropZone = document.getElementById('dropZone');
-const fileInput = document.getElementById('fileInput');
+}
 
-dropZone.onclick = () => fileInput.click();
-
-['dragenter', 'dragover', 'dragleave', 'drop'].forEach(ev => {
-  dropZone.addEventListener(ev, (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-  });
-});
-
-dropZone.addEventListener('dragenter', () => dropZone.classList.add('dragover'));
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-dropZone.addEventListener('dragover', () => dropZone.classList.add('dragover'));
-dropZone.addEventListener('drop', (e) => {
-  dropZone.classList.remove('dragover');
-  const f = e.dataTransfer.files[0];
-  if (f) handleFile(f);
-});
-
-fileInput.onchange = () => {
-  const f = fileInput.files[0];
-  if (f) handleFile(f);
-};
-
+// ============ Анализ одного файла ============
 async function handleFile(file) {
   if (!validateModels()) return;
   
-  const ext = (file.name || '').toLowerCase().slice(-5);
+  const ext = (file.name || '').toLowerCase();
   if (!['.docx', '.doc', '.pdf'].some(e => ext.endsWith(e))) {
     return showValidationError('Поддерживаются только .docx, .doc, .pdf');
   }
 
   const fd = new FormData();
   fd.append('file', file);
-  fd.append('translate_model', document.getElementById('translateModel').value || '');
-  fd.append('annotate_model', document.getElementById('annotateModel').value || '');
-  fd.append('review_model', document.getElementById('reviewModel').value || '');
+  fd.append('translate_model', $('translateModel').value);
+  fd.append('annotate_model', $('annotateModel').value);
+  fd.append('review_model', $('reviewModel').value);
 
-  const resultDiv = document.getElementById('singleFileResult');
-  resultDiv.classList.remove('d-none');
+  const resultDiv = $('singleFileResult');
+  resultDiv.classList.remove('d-none', 'alert-success', 'alert-danger', 'alert-warning');
   resultDiv.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Анализ...';
 
   try {
     const res = await fetch(`${API}/analyze-file`, { method: 'POST', body: fd });
     const data = await res.json();
+    
     if (!res.ok) {
-      let errorMsg = 'Ошибка';
-      if (data.detail) {
-        if (Array.isArray(data.detail)) {
-          errorMsg = data.detail.map(e => {
-            if (typeof e === 'string') return e;
-            if (e.msg) return e.msg;
-            return JSON.stringify(e);
-          }).join('; ');
-        } else if (typeof data.detail === 'string') {
-          errorMsg = data.detail;
-        } else {
-          errorMsg = JSON.stringify(data.detail);
-        }
-      }
+      const errorMsg = parseError(data);
       showValidationError(errorMsg);
-      resultDiv.innerHTML = 'Ошибка: ' + errorMsg;
+      resultDiv.innerHTML = 'Ошибка: ' + escapeHtml(errorMsg);
       resultDiv.classList.add('alert-danger');
       return;
     }
@@ -631,8 +381,7 @@ async function handleFile(file) {
         currentTaskId = data.task_id;
         currentResults = rj.results;
         renderTable(currentResults);
-        resultDiv.innerHTML = `<strong>${row.original_name}</strong>: ${row.title}`;
-        resultDiv.classList.remove('alert-warning');
+        resultDiv.innerHTML = `<strong>${escapeHtml(row.original_name)}</strong>: готово`;
         resultDiv.classList.add(row.status === 'success' ? 'alert-success' : 'alert-danger');
         return;
       }
@@ -642,17 +391,17 @@ async function handleFile(file) {
         return;
       }
       attempts++;
-      if (attempts < 120) setTimeout(poll, 500);
+      if (attempts < 600) setTimeout(poll, 500);
       else resultDiv.innerHTML = '⏱ Таймаут ожидания';
     };
     poll();
   } catch (err) {
-    resultDiv.innerHTML = 'Ошибка: ' + err.message;
+    resultDiv.innerHTML = 'Ошибка: ' + escapeHtml(err.message);
     resultDiv.classList.add('alert-danger');
   }
 }
 
-// Load results
+// ============ Результаты и таблица ============
 async function loadResults(taskId) {
   const res = await fetch(`${API}/results/${taskId}`);
   const data = await res.json();
@@ -661,16 +410,27 @@ async function loadResults(taskId) {
   renderTable(currentResults);
 }
 
-// Render table
-function renderTable(results, filter = currentFilter, search = document.getElementById('searchInput').value) {
+function getReviewBadge(status) {
+  if (status === 'passed') return '<span class="badge bg-success">✓ Проверена</span>';
+  if (status === 'warnings') return '<span class="badge bg-warning text-dark">⚠ Замечания</span>';
+  if (status === 'failed') return '<span class="badge bg-danger">✗ Проблемы</span>';
+  return '<span class="badge bg-secondary">–</span>';
+}
+
+function renderTable(results) {
+  const filter = currentFilter;
+  const search = $('searchInput')?.value || '';
+  
   let rows = [...results];
   if (filter === 'success') rows = rows.filter(r => r.status === 'success');
   if (filter === 'error') rows = rows.filter(r => r.status !== 'success');
-  const q = (search || '').toLowerCase();
+  
+  const q = search.toLowerCase();
   if (q) rows = rows.filter(r =>
     (r.original_name || '').toLowerCase().includes(q) ||
     (r.title || '').toLowerCase().includes(q)
   );
+  
   rows.sort((a, b) => {
     let va = a[sortColumn] || '';
     let vb = b[sortColumn] || '';
@@ -679,21 +439,15 @@ function renderTable(results, filter = currentFilter, search = document.getEleme
     return sortAsc ? c : -c;
   });
 
-  const tbody = document.getElementById('resultsBody');
+  const tbody = $('resultsBody');
   if (rows.length === 0) {
     const msg = results.length === 0 ? 'Результаты появятся после анализа' : 'Нет данных';
-    tbody.innerHTML = `<tr><td colspan="4" class="text-muted text-center py-5">${msg}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" class="text-muted text-center py-5">${msg}</td></tr>`;
     return;
   }
+  
   tbody.innerHTML = rows.map(r => {
-    const reviewBadge = r.review_status === 'passed' 
-      ? '<span class="badge bg-success">✓ Проверена</span>'
-      : r.review_status === 'warnings'
-      ? '<span class="badge bg-warning text-dark">⚠ Замечания</span>'
-      : r.review_status === 'failed'
-      ? '<span class="badge bg-danger">✗ Проблемы</span>'
-      : '<span class="badge bg-secondary">–</span>';
-    
+    const reviewBadge = getReviewBadge(r.review_status);
     const fixButton = (r.review_status === 'warnings' || r.review_status === 'failed') && r.status === 'success'
       ? `<button type="button" class="btn btn-sm btn-outline-success ms-1 fix-review-btn" data-file-name="${escapeHtml(r.file_name || '')}" data-original-name="${escapeHtml(r.original_name || '')}" title="Устранить замечания"><i class="bi bi-check2-square"></i> Устранить</button>`
       : '';
@@ -701,8 +455,10 @@ function renderTable(results, filter = currentFilter, search = document.getEleme
     return `<tr data-file="${(r.file_name || r.original_name || '').replace(/"/g, '&quot;')}">
       <td><span class="status-${r.status === 'success' ? 'ok' : 'err'}">${r.status === 'success' ? 'Прочитан' : 'Не прочитан'}</span></td>
       <td>${escapeHtml(r.original_name || r.file_name || '')}</td>
-      <td><span class="editable-title" contenteditable="true" data-file-name="${escapeHtml(r.file_name || '')}" data-original-name="${escapeHtml(r.original_name || '')}">${escapeHtml(r.title || '').replace(/\n/g, '<br>')}</span>
-          <button type="button" class="btn btn-sm btn-outline-primary ms-1 save-title-btn d-none" title="Сохранить"><i class="bi bi-check"></i></button></td>
+      <td>
+        <span class="editable-title" contenteditable="true" data-file-name="${escapeHtml(r.file_name || '')}" data-original-name="${escapeHtml(r.original_name || '')}">${escapeHtml(r.title || '')}</span>
+        <button type="button" class="btn btn-sm btn-outline-primary ms-1 save-title-btn d-none" title="Сохранить"><i class="bi bi-check"></i></button>
+      </td>
       <td>
         ${reviewBadge}
         <button type="button" class="btn btn-sm btn-outline-info ms-1 review-details-btn" data-review="${escapeHtml(r.review_report || '')}" title="Подробности"><i class="bi bi-info-circle"></i></button>
@@ -716,7 +472,11 @@ function renderTable(results, filter = currentFilter, search = document.getEleme
     </tr>`;
   }).join('');
 
-  // Edit + save
+  attachRowHandlers(tbody);
+}
+
+function attachRowHandlers(tbody) {
+  // Редактирование названия
   tbody.querySelectorAll('.editable-title').forEach(el => {
     el.addEventListener('input', () => {
       el.nextElementSibling?.classList.remove('d-none');
@@ -729,6 +489,7 @@ function renderTable(results, filter = currentFilter, search = document.getEleme
       }
     });
   });
+  
   tbody.querySelectorAll('.save-title-btn').forEach(btn => {
     btn.onclick = () => {
       const span = btn.previousElementSibling;
@@ -736,6 +497,7 @@ function renderTable(results, filter = currentFilter, search = document.getEleme
       btn.classList.add('d-none');
     };
   });
+  
   tbody.querySelectorAll('.copy-title-btn').forEach(btn => {
     btn.onclick = () => {
       const title = btn.closest('tr')?.querySelector('.editable-title')?.textContent?.trim() || btn.dataset.title || '';
@@ -745,106 +507,23 @@ function renderTable(results, filter = currentFilter, search = document.getEleme
     };
   });
   
-  // Обработчик кнопки просмотра деталей проверки
   tbody.querySelectorAll('.review-details-btn').forEach(btn => {
-    btn.onclick = () => {
-      const report = btn.dataset.review || '';
-      showReviewReport(report);
-    };
+    btn.onclick = () => showReviewReport(btn.dataset.review || '');
   });
   
-  // Обработчик кнопки устранения замечаний
   tbody.querySelectorAll('.fix-review-btn').forEach(btn => {
     btn.onclick = () => {
       const fileName = btn.dataset.fileName || btn.dataset.originalName;
       fixReviewIssues(fileName);
     };
   });
-  const doRegenerate = async (btn) => {
-    if (!validateModels()) return;
-    const fileName = btn.dataset.fileName || btn.dataset.originalName;
-    if (!currentTaskId || !fileName) return;
-    const origHtml = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-    try {
-      const res = await fetch(`${API}/regenerate-title`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          task_id: currentTaskId,
-          file_name: fileName,
-          translate_model: document.getElementById('translateModel').value,
-          annotate_model: document.getElementById('annotateModel').value,
-          review_model: document.getElementById('reviewModel').value
-        })
-      });
-      const data = await res.json();
-      if (res.ok && data.title) {
-        const r = currentResults.find(x => (x.file_name || x.original_name) === fileName);
-        if (r) {
-          r.title = data.title;
-          r.review_status = data.review_status || 'passed';
-          r.review_report = data.review_report || '';
-        }
-        const span = btn.closest('tr')?.querySelector('.editable-title');
-        if (span) span.textContent = data.title;
-        const copyBtn = btn.closest('tr')?.querySelector('.copy-title-btn');
-        if (copyBtn) copyBtn.dataset.title = data.title;
-        
-        // Обновляем колонку проверки
-        const reviewCell = btn.closest('tr')?.querySelector('td:nth-child(4)');
-        if (reviewCell) {
-          const reviewBadge = data.review_status === 'passed' 
-            ? '<span class="badge bg-success">✓ Проверена</span>'
-            : data.review_status === 'warnings'
-            ? '<span class="badge bg-warning text-dark">⚠ Замечания</span>'
-            : data.review_status === 'failed'
-            ? '<span class="badge bg-danger">✗ Проблемы</span>'
-            : '<span class="badge bg-secondary">–</span>';
-          
-          reviewCell.innerHTML = `
-            ${reviewBadge}
-            <button type="button" class="btn btn-sm btn-outline-info ms-1 review-details-btn" data-review="${escapeHtml(data.review_report || '')}" title="Подробности"><i class="bi bi-info-circle"></i></button>
-          `;
-          
-          // Перепривязываем обработчик
-          reviewCell.querySelector('.review-details-btn')?.addEventListener('click', () => {
-            showReviewReport(data.review_report || '');
-          });
-        }
-      } else throw new Error(data.detail || 'Ошибка');
-    } catch (e) {
-      showValidationError(e.message);
-    }
-    btn.disabled = false;
-    btn.innerHTML = origHtml;
-  };
+  
   tbody.querySelectorAll('.regenerate-btn').forEach(btn => {
     btn.onclick = () => doRegenerate(btn);
   });
 }
 
-// Log panel controls
-document.getElementById('logReset').onclick = () => {
-  document.getElementById('logPanel').innerHTML = '';
-};
-document.getElementById('logHide').onclick = () => {
-  document.getElementById('logSection').classList.add('d-none');
-  document.getElementById('logShow').classList.remove('d-none');
-};
-document.getElementById('logShow').onclick = () => {
-  document.getElementById('logSection').classList.remove('d-none');
-  document.getElementById('logShow').classList.add('d-none');
-};
-
-function escapeHtml(s) {
-  if (!s) return '';
-  const d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
-}
-
+// ============ Сохранение названия ============
 async function saveTitle(fileName, newTitle) {
   if (!currentTaskId || !newTitle) return;
   try {
@@ -855,103 +534,60 @@ async function saveTitle(fileName, newTitle) {
     });
     const r = currentResults.find(x => (x.file_name || x.original_name || '') === fileName);
     if (r) r.title = newTitle;
-    const btn = [...document.querySelectorAll('.copy-title-btn')].find(b => b.closest('tr')?.querySelector(`[data-file="${fileName.replace(/"/g, '')}"]`));
-    if (btn) btn.dataset.title = newTitle;
-  } catch (e) { showValidationError('Ошибка сохранения'); }
-}
-
-// Filters
-document.querySelectorAll('[data-filter]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('[data-filter]').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentFilter = btn.dataset.filter;
-    renderTable(currentResults);
-  });
-});
-
-document.getElementById('searchInput').addEventListener('input', () => renderTable(currentResults));
-
-// Sort
-document.querySelectorAll('#resultsTable th[data-sort]').forEach(th => {
-  th.addEventListener('click', () => {
-    if (sortColumn === th.dataset.sort) sortAsc = !sortAsc;
-    else { sortColumn = th.dataset.sort; sortAsc = true; }
-    renderTable(currentResults);
-  });
-});
-
-// Export
-function exportUrl(format) {
-  if (!currentTaskId) {
-    showValidationError('Сначала выполните анализ');
-    return null;
+  } catch (e) {
+    showValidationError('Ошибка сохранения');
   }
-  return `${API}/export/${currentTaskId}?format=${format}`;
 }
 
-document.getElementById('exportCsv').onclick = () => {
-  const url = exportUrl('csv');
-  if (url) window.open(url, '_blank');
-};
-document.getElementById('exportExcel').onclick = () => {
-  const url = exportUrl('excel');
-  if (url) window.open(url, '_blank');
-};
-
-// Reset results
-document.getElementById('resetResults').onclick = () => {
-  currentTaskId = null;
-  currentResults = [];
-  document.querySelectorAll('[data-filter]').forEach(b => { b.classList.remove('active'); if (b.dataset.filter === 'all') b.classList.add('active'); });
-  currentFilter = 'all';
-  document.getElementById('searchInput').value = '';
-  renderTable([]);
-};
-
-// Показать отчет проверки
-function showReviewReport(report) {
-  const modalHtml = `
-    <div class="modal fade" id="reviewReportModal" tabindex="-1">
-      <div class="modal-dialog">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title">Результат проверки</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-          </div>
-          <div class="modal-body">
-            <pre style="white-space: pre-wrap; word-break: break-word;">${report}</pre>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
+// ============ Перегенерация ============
+async function doRegenerate(btn) {
+  if (!validateModels()) return;
+  const fileName = btn.dataset.fileName || btn.dataset.originalName;
+  if (!currentTaskId || !fileName) return;
   
-  // Удаляем старое модальное если есть
-  const existing = document.getElementById('reviewReportModal');
-  if (existing) existing.remove();
+  const origHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
   
-  document.body.insertAdjacentHTML('beforeend', modalHtml);
-  const modal = new bootstrap.Modal(document.getElementById('reviewReportModal'));
-  modal.show();
-  
-  document.getElementById('reviewReportModal').addEventListener('hidden.bs.modal', () => {
-    document.getElementById('reviewReportModal').remove();
-  });
+  try {
+    const res = await fetch(`${API}/regenerate-title`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        task_id: currentTaskId,
+        file_name: fileName,
+        translate_model: $('translateModel').value,
+        annotate_model: $('annotateModel').value,
+        review_model: $('reviewModel').value
+      })
+    });
+    const data = await res.json();
+    
+    if (res.ok && data.title) {
+      const r = currentResults.find(x => (x.file_name || x.original_name) === fileName);
+      if (r) {
+        r.title = data.title;
+        r.review_status = data.review_status || 'passed';
+        r.review_report = data.review_report || '';
+      }
+      renderTable(currentResults);
+    } else {
+      throw new Error(parseError(data));
+    }
+  } catch (e) {
+    showValidationError(e.message);
+    btn.disabled = false;
+    btn.innerHTML = origHtml;
+  }
 }
 
-// Устранить замечания проверки
+// ============ Устранение замечаний ============
 async function fixReviewIssues(fileName) {
   if (!currentTaskId || !fileName) return;
   if (!validateModels()) return;
   
   const row = document.querySelector(`tr[data-file="${fileName.replace(/"/g, '&quot;')}"]`);
-  if (!row) return;
-  
-  const fixBtn = row.querySelector('.fix-review-btn');
+  const fixBtn = row?.querySelector('.fix-review-btn');
   if (!fixBtn) return;
   
   const origHtml = fixBtn.innerHTML;
@@ -965,12 +601,13 @@ async function fixReviewIssues(fileName) {
       body: JSON.stringify({
         task_id: currentTaskId,
         file_name: fileName,
-        translate_model: document.getElementById('translateModel').value,
-        annotate_model: document.getElementById('annotateModel').value,
-        review_model: document.getElementById('reviewModel').value
+        translate_model: $('translateModel').value,
+        annotate_model: $('annotateModel').value,
+        review_model: $('reviewModel').value
       })
     });
     const data = await res.json();
+    
     if (res.ok && data.title) {
       const r = currentResults.find(x => (x.file_name || x.original_name) === fileName);
       if (r) {
@@ -978,56 +615,294 @@ async function fixReviewIssues(fileName) {
         r.review_status = data.review_status || 'passed';
         r.review_report = data.review_report || '';
       }
-      
-      // Обновляем ячейку аннотации
-      const span = row.querySelector('.editable-title');
-      if (span) span.textContent = data.title;
-      
-      // Обновляем колонку проверки
-      const reviewCell = row.querySelector('td:nth-child(4)');
-      if (reviewCell) {
-        const reviewBadge = data.review_status === 'passed' 
-          ? '<span class="badge bg-success">✓ Проверена</span>'
-          : data.review_status === 'warnings'
-          ? '<span class="badge bg-warning text-dark">⚠ Замечания</span>'
-          : data.review_status === 'failed'
-          ? '<span class="badge bg-danger">✗ Проблемы</span>'
-          : '<span class="badge bg-secondary">–</span>';
-        
-        const fixButton = (data.review_status === 'warnings' || data.review_status === 'failed')
-          ? `<button type="button" class="btn btn-sm btn-outline-success ms-1 fix-review-btn" data-file-name="${fileName}" title="Устранить замечания"><i class="bi bi-check2-square"></i> Устранить</button>`
-          : '';
-        
-        reviewCell.innerHTML = `
-          ${reviewBadge}
-          <button type="button" class="btn btn-sm btn-outline-info ms-1 review-details-btn" data-review="${escapeHtml(data.review_report || '')}" title="Подробности"><i class="bi bi-info-circle"></i></button>
-          ${fixButton}
-        `;
-        
-        // Перепривязываем обработчики
-        reviewCell.querySelector('.review-details-btn')?.addEventListener('click', () => {
-          showReviewReport(data.review_report || '');
-        });
-        reviewCell.querySelector('.fix-review-btn')?.addEventListener('click', () => {
-          fixReviewIssues(fileName);
-        });
-      }
-      
-      // Обновляем данные в currentResults
-      if (r) {
-        const copyBtn = row.querySelector('.copy-title-btn');
-        if (copyBtn) copyBtn.dataset.title = data.title;
-      }
+      renderTable(currentResults);
     } else {
-      throw new Error(data.detail || 'Ошибка');
+      throw new Error(parseError(data));
     }
   } catch (e) {
     showValidationError(e.message);
+    fixBtn.disabled = false;
+    fixBtn.innerHTML = origHtml;
   }
-  
-  fixBtn.disabled = false;
-  fixBtn.innerHTML = origHtml;
 }
 
-// Initialize app on load
-document.addEventListener('DOMContentLoaded', initializeApp);
+// ============ Модалка отчёта проверки ============
+function showReviewReport(report) {
+  const existing = $('reviewReportModal');
+  if (existing) existing.remove();
+  
+  const modalHtml = `
+    <div class="modal fade" id="reviewReportModal" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Результат проверки</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <pre style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(report)}</pre>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  const modal = new bootstrap.Modal($('reviewReportModal'));
+  modal.show();
+  
+  $('reviewReportModal').addEventListener('hidden.bs.modal', () => {
+    $('reviewReportModal').remove();
+  });
+}
+
+// ============ Экспорт ============
+function exportUrl(format) {
+  if (!currentTaskId) {
+    showValidationError('Сначала выполните анализ');
+    return null;
+  }
+  return `${API}/export/${currentTaskId}?format=${format}`;
+}
+
+// ============ Привязка обработчиков ============
+function bindEventHandlers() {
+  // Тема
+  const themeBtn = $('themeToggle');
+  if (themeBtn) themeBtn.onclick = toggleTheme;
+
+  // Обновить модели
+  const refreshBtn = $('refreshModels');
+  if (refreshBtn) {
+    refreshBtn.onclick = async () => {
+      refreshBtn.disabled = true;
+      refreshBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Загрузка...';
+      await loadModels();
+      refreshBtn.disabled = false;
+      refreshBtn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Обновить список моделей';
+    };
+  }
+
+  // Сбросить модели
+  const resetBtn = $('resetModels');
+  if (resetBtn) {
+    resetBtn.onclick = () => {
+      ['translateModel', 'annotateModel', 'reviewModel'].forEach(id => {
+        const sel = $(id);
+        if (sel) sel.selectedIndex = 0;
+      });
+    };
+  }
+
+  // Иконка свертывания настроек
+  const modelToggle = document.querySelector('[data-bs-toggle="collapse"][data-bs-target="#modelSettings"]');
+  if (modelToggle) {
+    modelToggle.addEventListener('click', () => {
+      const icon = $('modelSettingsIcon');
+      if (icon) {
+        icon.classList.toggle('bi-chevron-down');
+        icon.classList.toggle('bi-chevron-up');
+      }
+    });
+  }
+
+  // Переключение режима (папка/файл)
+  document.querySelectorAll('[data-mode]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.querySelectorAll('.nav-pills .nav-link').forEach(l => l.classList.remove('active'));
+      btn.classList.add('active');
+      $('folderSection').classList.remove('active');
+      $('fileSection').classList.remove('active');
+      $(btn.dataset.mode === 'folder' ? 'folderSection' : 'fileSection').classList.add('active');
+    });
+  });
+
+  // Обзор папок
+  const browseSourceBtn = $('browseSource');
+  if (browseSourceBtn) {
+    browseSourceBtn.onclick = () => {
+      browseTarget = 'source';
+      const currentPath = $('sourceFolder').value;
+      $('browsePath').value = currentPath;
+      loadBrowse(currentPath || undefined);
+      const modal = initBrowseModal();
+      if (modal) modal.show();
+    };
+  }
+
+  const browseOutputBtn = $('browseOutput');
+  if (browseOutputBtn) {
+    browseOutputBtn.onclick = () => {
+      browseTarget = 'output';
+      const currentPath = $('outputFolder').value;
+      $('browsePath').value = currentPath;
+      loadBrowse(currentPath || undefined);
+      const modal = initBrowseModal();
+      if (modal) modal.show();
+    };
+  }
+
+  const browsePathInput = $('browsePath');
+  if (browsePathInput) {
+    browsePathInput.addEventListener('change', () => loadBrowse(browsePathInput.value));
+    browsePathInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        loadBrowse(browsePathInput.value);
+      }
+    });
+  }
+
+  // Выбор папки в модалке
+  const selectFolderBtn = $('selectFolderBtn');
+  if (selectFolderBtn) {
+    selectFolderBtn.onclick = () => {
+      const path = $('browsePath').value;
+      if (path && browseTarget) {
+        if (browseTarget === 'source') $('sourceFolder').value = path;
+        else $('outputFolder').value = path;
+        const modal = initBrowseModal();
+        if (modal) modal.hide();
+      }
+    };
+  }
+
+  // Запуск анализа папки
+  const runBtn = $('runFolder');
+  if (runBtn) runBtn.onclick = runFolderAnalysis;
+
+  // Остановка
+  const stopBtn = $('stopFolder');
+  if (stopBtn) stopBtn.onclick = stopFolderAnalysis;
+
+  // Drag & drop для файла
+  const dropZone = $('dropZone');
+  const fileInput = $('fileInput');
+  
+  if (dropZone && fileInput) {
+    dropZone.onclick = () => fileInput.click();
+    
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(ev => {
+      dropZone.addEventListener(ev, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+    });
+    
+    dropZone.addEventListener('dragenter', () => dropZone.classList.add('dragover'));
+    dropZone.addEventListener('dragover', () => dropZone.classList.add('dragover'));
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+      dropZone.classList.remove('dragover');
+      const f = e.dataTransfer.files[0];
+      if (f) handleFile(f);
+    });
+    
+    fileInput.onchange = () => {
+      const f = fileInput.files[0];
+      if (f) handleFile(f);
+    };
+  }
+
+  // Лог-панель
+  const logReset = $('logReset');
+  if (logReset) logReset.onclick = () => { $('logPanel').innerHTML = ''; };
+  
+  const logHide = $('logHide');
+  if (logHide) {
+    logHide.onclick = () => {
+      $('logSection').classList.add('d-none');
+      $('logShow').classList.remove('d-none');
+    };
+  }
+  
+  const logShow = $('logShow');
+  if (logShow) {
+    logShow.onclick = () => {
+      $('logSection').classList.remove('d-none');
+      $('logShow').classList.add('d-none');
+    };
+  }
+
+  // Экспорт
+  const exportCsv = $('exportCsv');
+  if (exportCsv) {
+    exportCsv.onclick = () => {
+      const url = exportUrl('csv');
+      if (url) window.open(url, '_blank');
+    };
+  }
+  
+  const exportExcel = $('exportExcel');
+  if (exportExcel) {
+    exportExcel.onclick = () => {
+      const url = exportUrl('excel');
+      if (url) window.open(url, '_blank');
+    };
+  }
+
+  // Сброс результатов
+  const resetResults = $('resetResults');
+  if (resetResults) {
+    resetResults.onclick = () => {
+      currentTaskId = null;
+      currentResults = [];
+      document.querySelectorAll('[data-filter]').forEach(b => {
+        b.classList.remove('active');
+        if (b.dataset.filter === 'all') b.classList.add('active');
+      });
+      currentFilter = 'all';
+      const searchInput = $('searchInput');
+      if (searchInput) searchInput.value = '';
+      renderTable([]);
+    };
+  }
+
+  // Фильтры
+  document.querySelectorAll('[data-filter]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-filter]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentFilter = btn.dataset.filter;
+      renderTable(currentResults);
+    });
+  });
+
+  // Поиск
+  const searchInput = $('searchInput');
+  if (searchInput) {
+    searchInput.addEventListener('input', () => renderTable(currentResults));
+  }
+
+  // Сортировка
+  document.querySelectorAll('#resultsTable th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      if (sortColumn === th.dataset.sort) sortAsc = !sortAsc;
+      else { sortColumn = th.dataset.sort; sortAsc = true; }
+      renderTable(currentResults);
+    });
+  });
+}
+
+// ============ Инициализация ============
+async function initializeApp() {
+  console.log('[init] starting...');
+  initTheme();
+  bindEventHandlers();
+  console.log('[init] handlers bound');
+  
+  // Запускаем загрузку моделей и проверку параллельно
+  loadModels();
+  checkConnection();
+}
+
+// Запуск после загрузки DOM
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeApp);
+} else {
+  initializeApp();
+}

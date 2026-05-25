@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """
-Запуск приложения: python run.py
+Запуск приложения: python3 run.py
 Браузер откроется сам. Остановка: Ctrl+C
 """
 import sys
@@ -9,12 +9,16 @@ import webbrowser
 import threading
 import time
 
+# Проверяем, что используем правильный Python
+if sys.version_info >= (3, 14):
+    print("⚠️  ОБНАРУЖЕН СЛОМАННЫЙ Python 3.14 из Homebrew")
+    print("   Используйте системный Python: /usr/bin/python3 run.py")
+    sys.exit(1)
+
 # ------------------------------------------------------------
-# НАСТРОЙКА ПОДКЛЮЧЕНИЯ К OLLAMA (изменяемая часть)
+# НАСТРОЙКА ПОДКЛЮЧЕНИЯ К OLLAMA
 # ------------------------------------------------------------
-# Указываем базовый URL вашего сервера
 os.environ.setdefault("OLLAMA_URL", "https://ollama.k2.iksi.edu")
-# Отключаем проверку SSL (т.к. сертификат самоподписанный)
 os.environ.setdefault("OLLAMA_VERIFY_SSL", "false")
 
 # ------------------------------------------------------------
@@ -24,7 +28,7 @@ try:
     from core import OllamaClient
     client = OllamaClient()
     if not client.check_connection():
-        print("⚠️  ВНИМАНИЕ: Сервер Ollama по адресу", os.environ["OLLAMA_URL"], "не отвечает.")
+        print("⚠️  ВНИМАНИЕ: Сервер Ollama не отвечает.")
         print("   Проверьте доступность сервера.\n")
     else:
         print("✅ Подключение к Ollama установлено.")
@@ -34,7 +38,7 @@ try:
         else:
             print("   ⚠️ Не удалось получить список моделей")
 except Exception as e:
-    print(f"⚠️  Не удалось проверить подключение к Ollama: {e}")
+    print(f"⚠️  Не удалось проверить подключение: {e}")
 
 # ------------------------------------------------------------
 # ЗАПУСК ВЕБ-СЕРВЕРА
@@ -42,9 +46,8 @@ except Exception as e:
 try:
     import uvicorn
 except ModuleNotFoundError:
-    print("Нужен модуль uvicorn. Установите зависимости:")
-    print("  pip install -r requirements.txt")
-    print("или:  pip install uvicorn")
+    print("Нужен модуль uvicorn. Установите:")
+    print("  /usr/bin/python3 -m pip install -r requirements.txt")
     sys.exit(1)
 
 
@@ -56,8 +59,8 @@ def open_browser():
 if __name__ == "__main__":
     HOST = "127.0.0.1"
     PORT = 8000
-    print("Сервер запускается...")
+    print("\nСервер запускается...")
     print(f"  http://{HOST}:{PORT}")
-    print("Остановка: Ctrl+C")
+    print("Остановка: Ctrl+C\n")
     threading.Thread(target=open_browser, daemon=True).start()
     uvicorn.run("app:app", host=HOST, port=PORT)
