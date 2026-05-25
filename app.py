@@ -356,12 +356,13 @@ async def analyze_file(
 
 @app.post("/api/cancel-task")
 async def cancel_task(req: CancelTaskRequest):
-    """Cancel a running folder analysis task and clean up created files."""
+    """Cancel a running folder analysis task."""
     task_id = req.task_id
     if not task_id or task_id not in tasks:
         raise HTTPException(status_code=404, detail="Задача не найдена")
     task_cancelled[task_id] = True
-    return {"ok": True, "status": "cancelling"}
+    tasks[task_id]["status"] = "cancelled"  # Сразу меняем статус
+    return {"ok": True, "status": "cancelled"}
 
 
 @app.get("/api/models")

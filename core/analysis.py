@@ -72,11 +72,15 @@ class DocumentAnalyzer:
             
             # Этап 1: Перевод (если включен)
             if self.config.enable_translation:
+                if self._cancel_check():
+                    return AnalysisResult(file_name=file_path.name, title="Остановлено", status="error", original_name=file_path.name)
                 self._log("   - Этап 1: Проверка языка/Перевод")
                 working_text = self.ollama.translate_text(text)
             
             # Этап 2: Аннотирование
             if self.config.enable_annotation:
+                if self._cancel_check():
+                    return AnalysisResult(file_name=file_path.name, title="Остановлено", status="error", original_name=file_path.name)
                 self._log("   - Этап 2: Первичная аннотация")
                 initial_title = self.ollama.generate_annotation(working_text, file_path.name)
             else:
@@ -84,6 +88,8 @@ class DocumentAnalyzer:
             
             # Этап 3: Проверка (с защитой от бесконечного цикла)
             if self.config.enable_review and initial_title:
+                if self._cancel_check():
+                    return AnalysisResult(file_name=file_path.name, title="Остановлено", status="error", original_name=file_path.name)
                 self._log("   - Этап 3: Проверка достоверности")
                 final_title = initial_title
                 review_status = "passed"

@@ -309,61 +309,33 @@ async function runFolderAnalysis() {
 // ============ Остановка анализа ============
 async function stopFolderAnalysis() {
   if (!currentTaskId) return;
-  const stopBtn = $('stopFolder');
-  const runBtn = $('runFolder');
   
-  // Сразу визуально показываем остановку
-  stopBtn.disabled = true;
-  stopBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Остановка...';
-  $('progressBar').classList.remove('progress-bar-animated');
-  $('progressBar').style.width = '50%';
+  const taskIdToCancel = currentTaskId;
   
-  try {
-    await fetch(`${API}/cancel-task`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ task_id: currentTaskId })
-    });
-    
-    // Быстрый опрос статуса (каждые 200мс)
-    const poll = async () => {
-      try {
-        const s = await fetch(`${API}/status/${currentTaskId}`);
-        const st = await s.json();
-        
-        if (st.status === 'cancelled' || st.status === 'failed') {
-          currentTaskId = null;
-          currentResults = [];
-          renderTable([]);
-          runBtn.disabled = false;
-          stopBtn.classList.add('d-none');
-          stopBtn.disabled = false;
-          stopBtn.innerHTML = '<i class="bi bi-stop-fill me-2"></i>Остановить';
-          $('progressSection').classList.add('d-none');
-          $('logPanel').innerHTML += '\n⏹ Остановлено пользователем';
-        } else {
-          setTimeout(poll, 200);
-        }
-      } catch (e) {
-        console.error('[stop poll]:', e);
-        // При ошибке тоже завершаем
-        currentTaskId = null;
-        currentResults = [];
-        renderTable([]);
-        runBtn.disabled = false;
-        stopBtn.classList.add('d-none');
-        stopBtn.disabled = false;
-        stopBtn.innerHTML = '<i class="bi bi-stop-fill me-2"></i>Остановить';
-        $('progressSection').classList.add('d-none');
-      }
-    };
-    poll();
-    
-  } catch (e) {
-    stopBtn.disabled = false;
-    stopBtn.innerHTML = '<i class="bi bi-stop-fill me-2"></i>Остановить';
-    showValidationError('Ошибка остановки: ' + e.message);
+  // МГНОВЕННО сбрасываем UI — не ждём backend
+  currentTaskId = null;
+  $('runFolder').disabled = false;
+  $('stopFolder').classList.add('d-none');
+  $('stopFolder').disabled = false;
+  $('stopFolder').innerHTML = '<i class="bi bi-stop-fill me-2"></i>Остановить';
+  $('progressSection').classList.add('d-none');
+  
+  // Добавляем запись в лог
+  const logPanel = $('logPanel');
+  if (logPanel) {
+    const line = document.createElement('div');
+    line.className = 'log-line';
+    line.textContent = '⏹ Остановлено пользователем';
+    logPanel.appendChild(line);
+    logPanel.scrollTop = logPanel.scrollHeight;
   }
+  
+  // Отправляем запрос отмены в фоне (не ждём ответа — fire and forget)
+  fetch(`${API}/cancel-task`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ task_id: taskIdToCancel })
+  }).catch(() => {});
 }
 
 // ============ Анализ одного файла ============
