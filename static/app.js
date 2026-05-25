@@ -817,7 +817,7 @@ async function fixReviewIssues(fileName) {
   fixBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Устранение...';
   
   try {
-    const res = await fetch(`${API}/regenerate-title`, {
+    const res = await fetch(`${API}/fix-review`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

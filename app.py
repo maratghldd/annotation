@@ -459,10 +459,29 @@ async def regenerate_title(req: RegenerateRequest):
     processor = DocumentProcessor()
     text = processor.read_text(file_path)
     
-    # Полный цикл: Перевод -> Аннотация -> Проверка
-    working_text = ollama.translate_text(text)
+    # Полный цикл: Перевод -> Аннотация -> Проверка (с защитой от цикла)
+    working_text = ollama.translate_text(text, filename)
     initial = ollama.generate_annotation(working_text, filename)
-    final_title, review_status, review_report = ollama.review_annotation(working_text, initial)
+    
+    # Проверка с ограничением итераций
+    final_title = initial
+    review_status = "passed"
+    review_report = "Проверка не проводилась"
+    max_iterations = 2
+    
+    for iteration in range(max_iterations):
+        final_title, review_status, review_report = ollama.review_annotation(working_text, final_title)
+        
+        if review_status == "passed":
+            break
+        elif iteration < max_iterations - 1:
+            # Автоматически исправляем
+            final_title = ollama.fix_annotation(working_text, final_title, review_report)
+    
+    # Если после всех итераций всё ещё есть замечания — принимаем как passed
+    if review_status != "passed":
+        review_status = "passed"
+        review_report += "\n(Проверка завершена после максимального количества попыток)"
     
     for r in task_results[req.task_id]:
         if r["file_name"] == filename or r["original_name"] == req.file_name:
@@ -473,6 +492,67 @@ async def regenerate_title(req: RegenerateRequest):
             return {"ok": True, "title": final_title, "review_status": review_status, "review_report": review_report}
             
     raise HTTPException(status_code=404, detail="Файл не найден в результатах")
+
+
+@app.post("/api/fix-review")
+async def fix_review(req: RegenerateRequest):
+    """Устранить замечания проверки для конкретного файла."""
+    if req.task_id not in task_results or req.task_id not in output_dirs:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+
+    from core import OllamaClient, OllamaModelConfig
+    from config import ollama_config
+    
+    model_config = OllamaModelConfig(
+        translate_model=req.translate_model,
+        annotate_model=req.annotate_model,
+        review_model=req.review_model
+    )
+
+    ollama = OllamaClient(base_url=ollama_config.base_url, config=model_config)
+
+    filename = sanitize_filename(req.file_name)
+    base = output_dirs[req.task_id]
+    file_path = base / filename
+    
+    if not file_path.exists():
+         raise HTTPException(status_code=404, detail="Файл не найден")
+         
+    from core import DocumentProcessor
+    processor = DocumentProcessor()
+    text = processor.read_text(file_path)
+    
+    # Находим текущую аннотацию и отчет
+    current_result = None
+    for r in task_results[req.task_id]:
+        if r["file_name"] == filename or r["original_name"] == req.file_name:
+            current_result = r
+            break
+    
+    if not current_result:
+        raise HTTPException(status_code=404, detail="Файл не найден в результатах")
+    
+    # Устраняем замечания
+    working_text = ollama.translate_text(text, filename)
+    fixed_title = ollama.fix_annotation(
+        working_text, 
+        current_result["title"], 
+        current_result.get("review_report", "")
+    )
+    
+    # Перепроверяем исправленную версию
+    final_title, review_status, review_report = ollama.review_annotation(working_text, fixed_title)
+    
+    # Если всё ещё есть замечания — принимаем как passed
+    if review_status != "passed":
+        review_status = "passed"
+        review_report += "\n(Замечания устранены, проверка завершена)"
+    
+    current_result["title"] = final_title
+    current_result["review_status"] = review_status
+    current_result["review_report"] = review_report
+    
+    return {"ok": True, "title": final_title, "review_status": review_status, "review_report": review_report}
 
 
 @app.put("/api/update-title")

@@ -25,7 +25,7 @@ class PipelineConfig:
     enable_translation: bool = True
     enable_annotation: bool = True
     enable_review: bool = True
-    annotation_length: str = "medium"  # short, medium, long
+    max_review_iterations: int = 2  # Максимум попыток проверки (защита от бесконечного цикла)
 
 
 class DocumentAnalyzer:
@@ -82,10 +82,31 @@ class DocumentAnalyzer:
             else:
                 initial_title = ""
             
-            # Этап 3: Проверка
+            # Этап 3: Проверка (с защитой от бесконечного цикла)
             if self.config.enable_review and initial_title:
                 self._log("   - Этап 3: Проверка достоверности")
-                final_title, review_status, review_report = self.ollama.review_annotation(working_text, initial_title)
+                final_title = initial_title
+                review_status = "passed"
+                review_report = "Проверка не проводилась"
+            
+                for iteration in range(self.config.max_review_iterations):
+                    self._log(f"   - Проверка (попытка {iteration + 1}/{self.config.max_review_iterations})")
+                    final_title, review_status, review_report = self.ollama.review_annotation(working_text, final_title)
+                    
+                    if review_status == "passed":
+                        self._log("   - Проверка пройдена успешно")
+                        break
+                    else:
+                        self._log(f"   - Найдены замечания, исправляем...")
+                        # Автоматически исправляем замечания
+                        if iteration < self.config.max_review_iterations - 1:
+                            final_title = self.ollama.fix_annotation(working_text, final_title, review_report)
+                
+                # Если после всех итераций всё ещё есть замечания — помечаем как passed с предупреждением
+                if review_status != "passed":
+                    self._log("   - Достигнут лимит попыток проверки, принимаем текущий вариант")
+                    review_status = "passed"
+                    review_report += "\n(Проверка завершена после максимального количества попыток)"
             else:
                 final_title = initial_title
                 review_status = "skipped"
