@@ -20,7 +20,14 @@ import os
 OLLAMA_MODE = os.environ.get("OLLAMA_MODE", "remote")
 
 if OLLAMA_MODE == "local":
-    from config_local import ollama_local_config as ollama_config, local_pipeline_config as pipeline_config
+    from config_local import ollama_local_config as ollama_config
+    # Для локального режима используем значения по умолчанию
+    class _pipeline_config_defaults:
+        enable_translation = True
+        enable_annotation = True
+        enable_review = True
+        max_annotation_chars = 1000
+    pipeline_config = _pipeline_config_defaults()
 else:
     from config import ollama_config, pipeline_config
 
