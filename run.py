@@ -23,6 +23,9 @@ if sys.version_info >= (3, 14):
 #   "local"  — локальная Ollama на вашем компьютере
 OLLAMA_MODE = "local"  # ← МЕНЯТЬ ЗДЕСЬ
 
+# Устанавливаем переменную окружения для app.py
+os.environ["OLLAMA_MODE"] = OLLAMA_MODE
+
 if OLLAMA_MODE == "local":
     # Локальная Ollama
     os.environ.setdefault("OLLAMA_LOCAL_URL", "http://localhost:11434")

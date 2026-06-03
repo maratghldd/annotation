@@ -16,8 +16,9 @@ from pydantic import BaseModel, field_validator
 from core import DocumentAnalyzer, AnalysisResult, OllamaClient, OllamaModelConfig, PipelineConfig
 import os
 
-# Импортируем правильную конфигурацию в зависимости от режима
+# Читаем режим из переменной окружения (устанавливается в run.py)
 OLLAMA_MODE = os.environ.get("OLLAMA_MODE", "remote")
+
 if OLLAMA_MODE == "local":
     from config_local import ollama_local_config as ollama_config, local_pipeline_config as pipeline_config
 else:
@@ -376,8 +377,15 @@ async def cancel_task(req: CancelTaskRequest):
 async def get_available_models():
     """Получить список доступных моделей из Ollama."""
     try:
+        print(f"[DEBUG] OLLAMA_MODE: {OLLAMA_MODE}")
+        print(f"[DEBUG] base_url: {ollama_config.base_url}")
+        
         ollama = OllamaClient()
+        print(f"[DEBUG] OllamaClient создан: {type(ollama).__name__}")
+        
         available = ollama.get_available_models()
+        print(f"[DEBUG] Доступно моделей: {len(available)}")
+        print(f"[DEBUG] Модели: {available}")
 
         return {
             "available_models": available,
