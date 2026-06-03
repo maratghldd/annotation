@@ -18,25 +18,46 @@ if sys.version_info >= (3, 14):
 # ------------------------------------------------------------
 # НАСТРОЙКА ПОДКЛЮЧЕНИЯ К OLLAMA
 # ------------------------------------------------------------
-os.environ.setdefault("OLLAMA_URL", "https://ollama.k2.iksi.edu")
-os.environ.setdefault("OLLAMA_VERIFY_SSL", "false")
+# Измените эту переменную для переключения:
+#   "remote" — удалённый сервер (ollama.k2.iksi.edu)
+#   "local"  — локальная Ollama на вашем компьютере
+OLLAMA_MODE = "local"  # ← МЕНЯТЬ ЗДЕСЬ
+
+if OLLAMA_MODE == "local":
+    # Локальная Ollama
+    os.environ.setdefault("OLLAMA_LOCAL_URL", "http://localhost:11434")
+    print("📍 Режим: ЛОКАЛЬНАЯ OLLAMA (localhost:11434)")
+    from core.ollama_local import OllamaLocalClient as OllamaClient
+    from config_local import ollama_local_config as ollama_config
+else:
+    # Удалённая Ollama
+    os.environ.setdefault("OLLAMA_URL", "https://ollama.k2.iksi.edu")
+    os.environ.setdefault("OLLAMA_VERIFY_SSL", "false")
+    print(f"📍 Режим: УДАЛЁННАЯ OLLAMA ({os.environ.get('OLLAMA_URL')})")
+    from core.ollama_models import OllamaClient
+    from config import ollama_config
 
 # ------------------------------------------------------------
 # ПРОВЕРКА ДОСТУПНОСТИ OLLAMA
 # ------------------------------------------------------------
 try:
-    from core import OllamaClient
     client = OllamaClient()
     if not client.check_connection():
-        print("⚠️  ВНИМАНИЕ: Сервер Ollama не отвечает.")
-        print("   Проверьте доступность сервера.\n")
+        print("⚠️  ВНИМАНИЕ: Ollama не отвечает.")
+        if OLLAMA_MODE == "local":
+            print("   Запустите: ollama serve")
+        else:
+            print("   Проверьте доступность сервера.\n")
     else:
         print("✅ Подключение к Ollama установлено.")
         models = client.get_available_models()
         if models:
             print(f"   Доступно моделей: {len(models)}")
+            print(f"   Модели: {', '.join(models[:5])}{'...' if len(models) > 5 else ''}")
         else:
             print("   ⚠️ Не удалось получить список моделей")
+            if OLLAMA_MODE == "local":
+                print("   Скачайте модель: ollama pull qwen2.5:32b")
 except Exception as e:
     print(f"⚠️  Не удалось проверить подключение: {e}")
 

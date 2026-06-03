@@ -14,7 +14,14 @@ from fastapi.templating import Jinja2Templates
 from fastapi import Request
 from pydantic import BaseModel, field_validator
 from core import DocumentAnalyzer, AnalysisResult, OllamaClient, OllamaModelConfig, PipelineConfig
-from config import ollama_config, pipeline_config
+import os
+
+# Импортируем правильную конфигурацию в зависимости от режима
+OLLAMA_MODE = os.environ.get("OLLAMA_MODE", "remote")
+if OLLAMA_MODE == "local":
+    from config_local import ollama_local_config as ollama_config, local_pipeline_config as pipeline_config
+else:
+    from config import ollama_config, pipeline_config
 
 
 # In-memory task storage
@@ -437,7 +444,6 @@ async def regenerate_title(req: RegenerateRequest):
         raise HTTPException(status_code=404, detail="Задача не найдена")
 
     from core import OllamaClient, OllamaModelConfig
-    from config import ollama_config
     
     # Настройка моделей (все модели обязательны)
     model_config = OllamaModelConfig(
@@ -502,7 +508,6 @@ async def fix_review(req: RegenerateRequest):
         raise HTTPException(status_code=404, detail="Задача не найдена")
 
     from core import OllamaClient, OllamaModelConfig
-    from config import ollama_config
     
     model_config = OllamaModelConfig(
         translate_model=req.translate_model,
