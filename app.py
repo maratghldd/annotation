@@ -27,6 +27,7 @@ if OLLAMA_MODE == "local":
         enable_annotation = True
         enable_review = True
         max_annotation_chars = 1000
+        max_review_iterations = 2
     pipeline_config = _pipeline_config_defaults()
 else:
     from config import ollama_config, pipeline_config
