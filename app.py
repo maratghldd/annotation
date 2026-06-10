@@ -385,24 +385,13 @@ async def cancel_task(req: CancelTaskRequest):
 async def get_available_models():
     """Получить список доступных моделей из Ollama."""
     try:
-        print(f"[DEBUG] OLLAMA_MODE: {OLLAMA_MODE}")
-        print(f"[DEBUG] base_url: {ollama_config.base_url}")
-        
         ollama = OllamaClient()
-        print(f"[DEBUG] OllamaClient создан: {type(ollama).__name__}")
-        
-        # Получаем ВСЕ установленные модели
-        all_models = ollama.get_available_models()
-        # Получаем АКТИВНЫЕ модели (загруженные в память)
-        active_models = ollama.get_active_models()
-        
-        print(f"[DEBUG] Всего моделей: {len(all_models)}")
-        print(f"[DEBUG] Активных моделей: {len(active_models)}")
-        print(f"[DEBUG] Активные: {active_models}")
+        available = ollama.get_available_models()
+        active = ollama.get_active_models()
 
         return {
-            "available_models": all_models,  # Все установленные
-            "active_models": active_models,   # Только активные
+            "available_models": available,
+            "active_models": active,
             "base_url": ollama_config.base_url,
             "pipeline_config": {
                 "enable_translation": pipeline_config.enable_translation,
