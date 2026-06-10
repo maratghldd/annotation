@@ -86,25 +86,45 @@ async function loadModels() {
     if (!res.ok) throw new Error('Сервер вернул ошибку: ' + res.status);
 
     const data = await res.json();
-    console.log('[loadModels] models:', data.available_models?.length);
+    console.log('[loadModels] моделей всего:', data.available_models?.length);
+    console.log('[loadModels] активных моделей:', data.active_models?.length);
 
     availableModels = data.available_models || [];
+    const activeModels = data.active_models || [];
     currentPipelineConfig = data.pipeline_config || {};
 
     const populateSelect = (selectId) => {
       const select = $(selectId);
       if (!select) return;
+      
       if (availableModels.length === 0) {
         select.innerHTML = '<option value="" disabled selected>Нет доступных моделей</option>';
         return;
       }
+      
       select.innerHTML = '<option value="" disabled selected>-- Выберите модель --</option>';
       availableModels.forEach(model => {
         const option = document.createElement('option');
         option.value = model;
-        option.textContent = model;
+        // Помечаем активные модели
+        if (activeModels.includes(model)) {
+          option.textContent = `✅ ${model}`;
+          option.style.fontWeight = 'bold';
+        } else {
+          option.textContent = `⚪ ${model}`;
+          option.style.color = '#999';
+        }
         select.appendChild(option);
       });
+      
+      // Добавляем легенду
+      const legend = select.parentElement.querySelector('.model-legend');
+      if (!legend) {
+        const legendDiv = document.createElement('div');
+        legendDiv.className = 'model-legend mt-1 text-muted small';
+        legendDiv.innerHTML = `<small>✅ Активна | ⚪ Не активна</small>`;
+        select.parentElement.appendChild(legendDiv);
+      }
     };
 
     populateSelect('translateModel');

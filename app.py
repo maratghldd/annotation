@@ -391,12 +391,18 @@ async def get_available_models():
         ollama = OllamaClient()
         print(f"[DEBUG] OllamaClient создан: {type(ollama).__name__}")
         
-        available = ollama.get_available_models()
-        print(f"[DEBUG] Доступно моделей: {len(available)}")
-        print(f"[DEBUG] Модели: {available}")
+        # Получаем ВСЕ установленные модели
+        all_models = ollama.get_available_models()
+        # Получаем АКТИВНЫЕ модели (загруженные в память)
+        active_models = ollama.get_active_models()
+        
+        print(f"[DEBUG] Всего моделей: {len(all_models)}")
+        print(f"[DEBUG] Активных моделей: {len(active_models)}")
+        print(f"[DEBUG] Активные: {active_models}")
 
         return {
-            "available_models": available,
+            "available_models": all_models,  # Все установленные
+            "active_models": active_models,   # Только активные
             "base_url": ollama_config.base_url,
             "pipeline_config": {
                 "enable_translation": pipeline_config.enable_translation,
@@ -410,6 +416,7 @@ async def get_available_models():
         traceback.print_exc()
         return {
             "available_models": [],
+            "active_models": [],
             "base_url": ollama_config.base_url,
             "pipeline_config": {},
             "error": str(e)

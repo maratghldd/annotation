@@ -34,7 +34,7 @@ class OllamaLocalClient:
             return False
     
     def get_available_models(self) -> List[str]:
-        """Получает список доступных локальных моделей."""
+        """Получает список ВСЕХ установленных моделей."""
         try:
             response = requests.get(f"{self.base_url}/api/tags", verify=self.verify, timeout=(10, 30))
             response.raise_for_status()
@@ -42,6 +42,18 @@ class OllamaLocalClient:
             return [model.get("name", "") for model in data.get("models", []) if model.get("name")]
         except Exception as e:
             print(f"Ошибка получения локальных моделей: {e}")
+            return []
+    
+    def get_active_models(self) -> List[str]:
+        """Получает список АКТИВНЫХ моделей (загруженных в память)."""
+        try:
+            response = requests.get(f"{self.base_url}/api/ps", verify=self.verify, timeout=(10, 30))
+            response.raise_for_status()
+            data = response.json()
+            # /api/ps возвращает {"models": [{"name": "...", "size": ..., ...}, ...]}
+            return [model.get("name", "") for model in data.get("models", []) if model.get("name")]
+        except Exception as e:
+            print(f"Ошибка получения активных моделей: {e}")
             return []
     
     def _call_model(self, model: str, prompt: str, timeout: tuple = None) -> str:
