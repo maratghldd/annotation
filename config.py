@@ -18,6 +18,7 @@ class PipelineConfig:
     enable_annotation: bool = os.environ.get("ENABLE_ANNOTATION", "true").lower() == "true"
     enable_review: bool = os.environ.get("ENABLE_REVIEW", "true").lower() == "true"
     max_annotation_chars: int = int(os.environ.get("MAX_ANNOTATION_CHARS", "800"))
+    max_review_iterations: int = 2  # Защита от бесконечного цикла
 
 
 # Глобальная конфигурация
