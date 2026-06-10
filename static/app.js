@@ -106,25 +106,9 @@ async function loadModels() {
       availableModels.forEach(model => {
         const option = document.createElement('option');
         option.value = model;
-        // Помечаем активные модели
-        if (activeModels.includes(model)) {
-          option.textContent = `✅ ${model}`;
-          option.style.fontWeight = 'bold';
-        } else {
-          option.textContent = `⚪ ${model}`;
-          option.style.color = '#999';
-        }
+        option.textContent = model;
         select.appendChild(option);
       });
-      
-      // Добавляем легенду
-      const legend = select.parentElement.querySelector('.model-legend');
-      if (!legend) {
-        const legendDiv = document.createElement('div');
-        legendDiv.className = 'model-legend mt-1 text-muted small';
-        legendDiv.innerHTML = `<small>✅ Активна | ⚪ Не активна</small>`;
-        select.parentElement.appendChild(legendDiv);
-      }
     };
 
     populateSelect('translateModel');
