@@ -36,12 +36,23 @@ class OllamaClient:
     def get_available_models(self) -> List[str]:
         """Получает список ВСЕХ установленных моделей."""
         try:
+            print(f"[get_available_models] Запрос к {self.base_url}/api/tags")
+            print(f"[get_available_models] verify={self.verify}")
+            
             response = requests.get(f"{self.base_url}/api/tags", verify=self.verify, timeout=(10, 30))
+            print(f"[get_available_models] Status code: {response.status_code}")
+            
             response.raise_for_status()
             data = response.json()
-            return [model.get("name", "") for model in data.get("models", []) if model.get("name")]
+            print(f"[get_available_models] Response data: {data}")
+            
+            models = [model.get("name", "") for model in data.get("models", []) if model.get("name")]
+            print(f"[get_available_models] Found {len(models)} models: {models}")
+            return models
         except Exception as e:
-            print(f"Ошибка получения моделей: {e}")
+            print(f"Ошибка получения моделей: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
             return []
     
     def get_active_models(self) -> List[str]:

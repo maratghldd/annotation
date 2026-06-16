@@ -81,20 +81,19 @@ def run_folder_analysis_task(
         log_callback("\n🔄 Загрузка моделей в оперативную память...")
         
         # Собираем уникальные модели для загрузки (чтобы не грузить одну модель 3 раза)
-        models_to_load = {}
+        models_to_load = set()
         if enable_translation if enable_translation is not None else pipeline_config.enable_translation:
-            models_to_load[translate_model] = "Перевод"
+            models_to_load.add(translate_model)
         if enable_annotation if enable_annotation is not None else pipeline_config.enable_annotation:
-            models_to_load[annotate_model] = "Аннотирование"
+            models_to_load.add(annotate_model)
         if enable_review if enable_review is not None else pipeline_config.enable_review:
-            models_to_load[review_model] = "Проверка"
+            models_to_load.add(review_model)
         
         # Загружаем каждую уникальную модель только один раз
-        loaded_models = set()
-        for model_name, stage in models_to_load.items():
-            if model_name and model_name not in loaded_models:
+        for model_name in models_to_load:
+            if model_name:
                 try:
-                    log_callback(f"   - Загрузка модели {stage}: {model_name}...")
+                    log_callback(f"   - Загрузка модели: {model_name}...")
                     
                     # Отправляем запрос к модели, чтобы она загрузилась в память
                     payload = {
@@ -113,7 +112,6 @@ def run_folder_analysis_task(
                     )
                     response.raise_for_status()
                     
-                    loaded_models.add(model_name)
                     log_callback(f"   ✅ Модель {model_name} загружена в оперативную память")
                     
                     # Пауза чтобы модель стабилизировалась
@@ -121,7 +119,7 @@ def run_folder_analysis_task(
                     time.sleep(2)
                     
                 except Exception as e:
-                    log_callback(f"   ⚠️ Ошибка загрузки модели {stage}: {e}")
+                    log_callback(f"   ⚠️ Ошибка загрузки модели {model_name}: {e}")
 
         # Настройка конфигурации моделей (все модели обязательны)
         model_config = OllamaModelConfig(
@@ -433,9 +431,19 @@ async def cancel_task(req: CancelTaskRequest):
 async def get_available_models():
     """Получить список доступных моделей из Ollama."""
     try:
+        print(f"\n[DEBUG /api/models] OLLAMA_MODE={OLLAMA_MODE}")
+        print(f"[DEBUG /api/models] base_url={ollama_config.base_url}")
+        
         ollama = OllamaClient()
+        print(f"[DEBUG /api/models] OllamaClient создан: {type(ollama).__name__}")
+        
         available = ollama.get_available_models()
+        print(f"[DEBUG /api/models] available_models count: {len(available)}")
+        print(f"[DEBUG /api/models] available_models: {available}")
+        
         active = ollama.get_active_models()
+        print(f"[DEBUG /api/models] active_models count: {len(active)}")
+        print(f"[DEBUG /api/models] active_models: {active}\n")
 
         return {
             "available_models": available,
