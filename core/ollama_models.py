@@ -23,7 +23,7 @@ class OllamaClient:
         self.base_url = (base_url or ollama_config.base_url).rstrip("/")
         self.config = config
         self.verify = ollama_config.verify_ssl
-        self.default_timeout = (10, 120)  # (connect, read) — 2 минуты максимум
+        self.default_timeout = (10, 900)  # (connect, read) — 15 минут для больших моделей
     
     def check_connection(self) -> bool:
         """Проверяет доступность Ollama."""

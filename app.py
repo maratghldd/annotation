@@ -3,6 +3,7 @@ import io
 import os
 import uuid
 import asyncio
+import requests
 from pathlib import Path
 from typing import Dict, List, Optional
 from contextlib import asynccontextmanager
@@ -91,20 +92,30 @@ def run_folder_analysis_task(
             if model_name:
                 try:
                     log_callback(f"   - Загрузка модели {stage}: {model_name}...")
-                    ollama_temp = OllamaClient(base_url=ollama_config.base_url)
+                    
+                    # Отправляем запрос к модели, чтобы она загрузилась в память
                     payload = {
                         "model": model_name,
                         "prompt": "test",
                         "stream": False,
-                        "keep_alive": -1  # Не выгружать
+                        "keep_alive": -1  # Не выгружать из памяти
                     }
-                    requests.post(
+                    
+                    # Увеличиваем таймаут для больших моделей (122B)
+                    response = requests.post(
                         f"{ollama_config.base_url}/api/generate",
                         json=payload,
                         verify=ollama_config.verify_ssl,
-                        timeout=(10, 600)
+                        timeout=(10, 1800)  # 30 минут на генерацию для больших моделей
                     )
+                    response.raise_for_status()
+                    
                     log_callback(f"   ✅ Модель {stage} ({model_name}) загружена в оперативную память")
+                    
+                    # Пауза чтобы модель стабилизировалась
+                    import time
+                    time.sleep(2)
+                    
                 except Exception as e:
                     log_callback(f"   ⚠️ Ошибка загрузки модели {stage}: {e}")
 
