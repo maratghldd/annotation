@@ -75,6 +75,39 @@ def run_folder_analysis_task(
         def cancel_check():
             return task_cancelled.get(task_id, False)
 
+        # Загружаем модели в оперативную память перед началом
+        log_callback = get_log_callback(task_id)
+        log_callback("\n🔄 Загрузка моделей в оперативную память...")
+        
+        models_to_load = []
+        if enable_translation if enable_translation is not None else pipeline_config.enable_translation:
+            models_to_load.append(("Перевод", translate_model))
+        if enable_annotation if enable_annotation is not None else pipeline_config.enable_annotation:
+            models_to_load.append(("Аннотирование", annotate_model))
+        if enable_review if enable_review is not None else pipeline_config.enable_review:
+            models_to_load.append(("Проверка", review_model))
+        
+        for stage, model_name in models_to_load:
+            if model_name:
+                try:
+                    log_callback(f"   - Загрузка модели {stage}: {model_name}...")
+                    ollama_temp = OllamaClient(base_url=ollama_config.base_url)
+                    payload = {
+                        "model": model_name,
+                        "prompt": "test",
+                        "stream": False,
+                        "keep_alive": -1  # Не выгружать
+                    }
+                    requests.post(
+                        f"{ollama_config.base_url}/api/generate",
+                        json=payload,
+                        verify=ollama_config.verify_ssl,
+                        timeout=(10, 600)
+                    )
+                    log_callback(f"   ✅ Модель {stage} ({model_name}) загружена в оперативную память")
+                except Exception as e:
+                    log_callback(f"   ⚠️ Ошибка загрузки модели {stage}: {e}")
+
         # Настройка конфигурации моделей (все модели обязательны)
         model_config = OllamaModelConfig(
             translate_model=translate_model,
@@ -96,7 +129,7 @@ def run_folder_analysis_task(
 
         analyzer = DocumentAnalyzer(
             ollama_client=ollama_client,
-            log_callback=get_log_callback(task_id),
+            log_callback=log_callback,
             cancel_check=cancel_check,
             config=pipe_config
         )
@@ -107,7 +140,7 @@ def run_folder_analysis_task(
             _cleanup_task_files(task_id)
             tasks[task_id]["status"] = "cancelled"
             task_results[task_id] = []
-            get_log_callback(task_id)("\nОстановлено. Созданные файлы удалены.")
+            log_callback("\nОстановлено. Созданные файлы удалены.")
             return
 
         task_results[task_id] = [
@@ -123,7 +156,7 @@ def run_folder_analysis_task(
             for r in results
         ]
         tasks[task_id]["status"] = "completed"
-        get_log_callback(task_id)("\nРабота завершена")
+        log_callback("\nРабота завершена")
 
         report_file = output_path / "результаты_анализа.txt"
         _save_results(results, report_file, source)
@@ -131,7 +164,7 @@ def run_folder_analysis_task(
         if task_cancelled.get(task_id, False):
             _cleanup_task_files(task_id)
             tasks[task_id]["status"] = "cancelled"
-            get_log_callback(task_id)("\nОстановлено. Созданные файлы удалены.")
+            log_callback("\nОстановлено. Созданные файлы удалены.")
         else:
             tasks[task_id]["status"] = "failed"
             task_results[task_id] = []
@@ -410,6 +443,35 @@ async def get_available_models():
             "pipeline_config": {},
             "error": str(e)
         }
+
+
+@app.post("/api/load-model")
+async def load_model(req: BaseModel):
+    """Загрузить модель в оперативную память."""
+    model_name = req.dict().get('model_name', '')
+    if not model_name:
+        raise HTTPException(status_code=400, detail="Имя модели не указано")
+    
+    try:
+        ollama = OllamaClient()
+        # Отправляем запрос к модели, чтобы она загрузилась
+        payload = {
+            "model": model_name,
+            "prompt": "test",
+            "stream": False,
+            "keep_alive": -1  # Не выгружать из памяти
+        }
+        response = requests.post(
+            f"{ollama_config.base_url}/api/generate",
+            json=payload,
+            verify=ollama_config.verify_ssl,
+            timeout=(10, 600)
+        )
+        response.raise_for_status()
+        return {"ok": True, "message": f"Модель {model_name} загружена в оперативную память"}
+    except Exception as e:
+        print(f"Ошибка загрузки модели {model_name}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/test-connection")

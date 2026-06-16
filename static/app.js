@@ -89,12 +89,8 @@ async function loadModels() {
     console.log('[loadModels] моделей всего:', data.available_models?.length);
     console.log('[loadModels] активных моделей:', data.active_models?.length);
 
-    // Используем ТОЛЬКО активные модели (если есть), иначе все доступные
-    const modelsToShow = (data.active_models && data.active_models.length > 0) 
-      ? data.active_models 
-      : (data.available_models || []);
-    
-    availableModels = modelsToShow;
+    // Показываем ВСЕ скачанные модели
+    availableModels = data.available_models || [];
     currentPipelineConfig = data.pipeline_config || {};
 
     const populateSelect = (selectId) => {
