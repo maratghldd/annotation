@@ -21,7 +21,7 @@ if sys.version_info >= (3, 14):
 # Измените эту переменную для переключения:
 #   "remote" — удалённый сервер (ollama.k2.iksi.edu)
 #   "local"  — локальная Ollama на вашем компьютере
-OLLAMA_MODE = "local"  # ← МЕНЯТЬ ЗДЕСЬ
+OLLAMA_MODE = "remote"  # ← МЕНЯТЬ ЗДЕСЬ
 
 # Устанавливаем переменную окружения для app.py
 os.environ["OLLAMA_MODE"] = OLLAMA_MODE
