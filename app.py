@@ -8,21 +8,16 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, BackgroundTasks, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, Form
-from fastapi.responses import FileResponse, StreamingResponse, Response
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from fastapi import Request
-from pydantic import BaseModel, field_validator
-from core import DocumentAnalyzer, AnalysisResult, OllamaClient, OllamaModelConfig, PipelineConfig
-import os
-
-# Читаем режим из переменной окружения (устанавливается в run.py)
+# ВАЖНО: Сначала читаем режим, ПОТОМ импортируем core!
 OLLAMA_MODE = os.environ.get("OLLAMA_MODE", "remote")
+
+# Отладка: выводим переменные окружения
+print(f"\n[APP.PY START] OLLAMA_MODE={OLLAMA_MODE}")
+print(f"[APP.PY START] OLLAMA_URL={os.environ.get('OLLAMA_URL', 'НЕ УСТАНОВЛЕНА')}")
+print(f"[APP.PY START] OLLAMA_VERIFY_SSL={os.environ.get('OLLAMA_VERIFY_SSL', 'НЕ УСТАНОВЛЕНА')}\n")
 
 if OLLAMA_MODE == "local":
     from config_local import ollama_local_config as ollama_config
-    # Для локального режима используем значения по умолчанию
     class _pipeline_config_defaults:
         enable_translation = True
         enable_annotation = True
@@ -32,6 +27,15 @@ if OLLAMA_MODE == "local":
     pipeline_config = _pipeline_config_defaults()
 else:
     from config import ollama_config, pipeline_config
+
+# Теперь импортируем core (использует правильный режим)
+from fastapi import FastAPI, BackgroundTasks, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, Form
+from fastapi.responses import FileResponse, StreamingResponse, Response
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi import Request
+from pydantic import BaseModel, field_validator
+from core import DocumentAnalyzer, AnalysisResult, OllamaClient, OllamaModelConfig, PipelineConfig
 
 
 # In-memory task storage
@@ -431,9 +435,19 @@ async def cancel_task(req: CancelTaskRequest):
 async def get_available_models():
     """Получить список доступных моделей из Ollama."""
     try:
+        print(f"\n[API/MODELS] OLLAMA_MODE={OLLAMA_MODE}")
+        print(f"[API/MODELS] base_url={ollama_config.base_url}")
+        
         ollama = OllamaClient()
+        print(f"[API/MODELS] OllamaClient создан: {type(ollama).__name__}")
+        
         available = ollama.get_available_models()
+        print(f"[API/MODELS] available_models: {len(available)} шт.")
+        for i, m in enumerate(available, 1):
+            print(f"[API/MODELS]   {i}. {m}")
+        
         active = ollama.get_active_models()
+        print(f"[API/MODELS] active_models: {len(active)} шт.\n")
 
         return {
             "available_models": available,

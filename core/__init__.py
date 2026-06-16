@@ -1,8 +1,11 @@
 """Core modules for document analysis."""
 import os
 
+# Читаем режим из переменной окружения
+_ollama_mode = os.environ.get("OLLAMA_MODE", "remote")
+
 # Динамический выбор клиента Ollama в зависимости от режима
-if os.environ.get("OLLAMA_MODE") == "local":
+if _ollama_mode == "local":
     from .ollama_local import OllamaLocalClient as OllamaClient, OllamaLocalModelConfig as OllamaModelConfig
     from config_local import local_pipeline_config as _local_pipeline_config
     
