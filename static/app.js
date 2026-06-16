@@ -88,8 +88,9 @@ async function loadModels() {
     const data = await res.json();
     console.log('[loadModels] моделей всего:', data.available_models?.length);
     console.log('[loadModels] активных моделей:', data.active_models?.length);
+    console.log('[loadModels] ВСЕ модели (available_models):', data.available_models);
 
-    // Показываем ВСЕ скачанные модели
+    // Показываем ВСЕ скачанные модели (из available_models, а не active_models)
     availableModels = data.available_models || [];
     currentPipelineConfig = data.pipeline_config || {};
 

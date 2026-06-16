@@ -80,16 +80,19 @@ def run_folder_analysis_task(
         log_callback = get_log_callback(task_id)
         log_callback("\n🔄 Загрузка моделей в оперативную память...")
         
-        models_to_load = []
+        # Собираем уникальные модели для загрузки (чтобы не грузить одну модель 3 раза)
+        models_to_load = {}
         if enable_translation if enable_translation is not None else pipeline_config.enable_translation:
-            models_to_load.append(("Перевод", translate_model))
+            models_to_load[translate_model] = "Перевод"
         if enable_annotation if enable_annotation is not None else pipeline_config.enable_annotation:
-            models_to_load.append(("Аннотирование", annotate_model))
+            models_to_load[annotate_model] = "Аннотирование"
         if enable_review if enable_review is not None else pipeline_config.enable_review:
-            models_to_load.append(("Проверка", review_model))
+            models_to_load[review_model] = "Проверка"
         
-        for stage, model_name in models_to_load:
-            if model_name:
+        # Загружаем каждую уникальную модель только один раз
+        loaded_models = set()
+        for model_name, stage in models_to_load.items():
+            if model_name and model_name not in loaded_models:
                 try:
                     log_callback(f"   - Загрузка модели {stage}: {model_name}...")
                     
@@ -110,7 +113,8 @@ def run_folder_analysis_task(
                     )
                     response.raise_for_status()
                     
-                    log_callback(f"   ✅ Модель {stage} ({model_name}) загружена в оперативную память")
+                    loaded_models.add(model_name)
+                    log_callback(f"   ✅ Модель {model_name} загружена в оперативную память")
                     
                     # Пауза чтобы модель стабилизировалась
                     import time
