@@ -431,19 +431,9 @@ async def cancel_task(req: CancelTaskRequest):
 async def get_available_models():
     """Получить список доступных моделей из Ollama."""
     try:
-        print(f"\n[DEBUG /api/models] OLLAMA_MODE={OLLAMA_MODE}")
-        print(f"[DEBUG /api/models] base_url={ollama_config.base_url}")
-        
         ollama = OllamaClient()
-        print(f"[DEBUG /api/models] OllamaClient создан: {type(ollama).__name__}")
-        
         available = ollama.get_available_models()
-        print(f"[DEBUG /api/models] available_models count: {len(available)}")
-        print(f"[DEBUG /api/models] available_models: {available}")
-        
         active = ollama.get_active_models()
-        print(f"[DEBUG /api/models] active_models count: {len(active)}")
-        print(f"[DEBUG /api/models] active_models: {active}\n")
 
         return {
             "available_models": available,

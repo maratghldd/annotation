@@ -76,27 +76,41 @@ async function loadModels() {
   // Показываем состояние "загрузка"
   ['translateModel', 'annotateModel', 'reviewModel'].forEach(id => {
     const sel = $(id);
-    if (sel) sel.innerHTML = '<option value="" disabled selected>Загрузка...</option>';
+    if (sel) {
+      sel.innerHTML = '<option value="" disabled selected>Загрузка...</option>';
+      sel.disabled = true;
+    }
   });
 
   try {
-    const res = await fetch(`${API}/models`);
+    // Добавляем timestamp чтобы избежать кэша
+    const res = await fetch(`${API}/models?t=${Date.now()}`);
     console.log('[loadModels] status:', res.status);
 
     if (!res.ok) throw new Error('Сервер вернул ошибку: ' + res.status);
 
     const data = await res.json();
+    console.log('[loadModels] ПОЛНЫЙ ОТВЕТ:', JSON.stringify(data, null, 2));
     console.log('[loadModels] моделей всего:', data.available_models?.length);
     console.log('[loadModels] активных моделей:', data.active_models?.length);
-    console.log('[loadModels] ВСЕ модели (available_models):', data.available_models);
 
-    // Показываем ВСЕ скачанные модели (из available_models, а не active_models)
-    availableModels = data.available_models || [];
+    // Берём ВСЕ модели из available_models
+    const allModels = data.available_models || [];
+    console.log('[loadModels] ВСЕ модели для отображения:', allModels);
+
+    if (allModels.length === 0) {
+      console.warn('[loadModels] ВНИМАНИЕ: Список моделей пуст!');
+    }
+
+    availableModels = allModels;
     currentPipelineConfig = data.pipeline_config || {};
 
     const populateSelect = (selectId) => {
       const select = $(selectId);
-      if (!select) return;
+      if (!select) {
+        console.error('[loadModels] Элемент ' + selectId + ' не найден!');
+        return;
+      }
       
       if (availableModels.length === 0) {
         select.innerHTML = '<option value="" disabled selected>Нет доступных моделей</option>';
@@ -104,17 +118,27 @@ async function loadModels() {
       }
       
       select.innerHTML = '<option value="" disabled selected>-- Выберите модель --</option>';
-      availableModels.forEach(model => {
+      
+      availableModels.forEach((model, idx) => {
         const option = document.createElement('option');
         option.value = model;
         option.textContent = model;
         select.appendChild(option);
+        console.log('[loadModels] Добавлена модель #' + (idx+1) + ': ' + model);
       });
+      
+      console.log('[loadModels] В select ' + selectId + ' добавлено ' + select.options.length + ' моделей');
     };
 
     populateSelect('translateModel');
     populateSelect('annotateModel');
     populateSelect('reviewModel');
+
+    // Разблокируем select'ы
+    ['translateModel', 'annotateModel', 'reviewModel'].forEach(id => {
+      const sel = $(id);
+      if (sel) sel.disabled = false;
+    });
 
     // Применяем конфигурацию pipeline
     const enableTrans = $('enableTranslation');
@@ -122,16 +146,21 @@ async function loadModels() {
     const enableRev = $('enableReview');
     if (enableRev) enableRev.checked = currentPipelineConfig.enable_review !== false;
 
+    console.log('[loadModels] ЗАВЕРШЕНО. Моделей загружено:', availableModels.length);
+
   } catch (err) {
-    console.error('[loadModels] error:', err);
+    console.error('[loadModels] КРИТИЧЕСКАЯ ОШИБКА:', err);
     showValidationError('Не удалось загрузить список моделей: ' + err.message);
     ['translateModel', 'annotateModel', 'reviewModel'].forEach(id => {
       const sel = $(id);
-      if (sel) sel.innerHTML = '<option value="" disabled selected>Ошибка загрузки</option>';
+      if (sel) {
+        sel.innerHTML = '<option value="" disabled selected>Ошибка загрузки</option>';
+        sel.disabled = false;
+      }
     });
   }
 }
-
+  
 // ============ Проверка подключения ============
 async function checkConnection() {
   const statusDiv = $('connectionStatus');
@@ -221,7 +250,7 @@ async function loadBrowse(path = '') {
     showValidationError('Не удалось загрузить список папок');
   }
 }
-
+    
 // ============ Анализ папки ============
 async function runFolderAnalysis() {
   const source = $('sourceFolder').value.trim().replace(/^["']|["']$/g, '');
