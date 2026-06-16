@@ -47,14 +47,14 @@ class OllamaClient:
     def get_active_models(self) -> List[str]:
         """Получает список АКТИВНЫХ моделей (загруженных в память)."""
         try:
-            response = requests.get(f"{self.base_url}/api/ps", verify=self.verify, timeout=(10, 30))
+            # Короткий таймаут чтобы не зависать если endpoint недоступен
+            response = requests.get(f"{self.base_url}/api/ps", verify=self.verify, timeout=(5, 10))
             response.raise_for_status()
             data = response.json()
             # /api/ps возвращает {"models": [{"name": "...", "size": ..., ...}, ...]}
             return [model.get("name", "") for model in data.get("models", []) if model.get("name")]
         except Exception as e:
             # Если /api/ps недоступен - возвращаем пустой список (не ломаем всё)
-            print(f"[WARN] Не удалось получить активные модели: {e}")
             return []
     
     def _call_model(self, model: str, prompt: str, timeout: tuple = None) -> str:

@@ -435,19 +435,18 @@ async def cancel_task(req: CancelTaskRequest):
 async def get_available_models():
     """Получить список доступных моделей из Ollama."""
     try:
-        print(f"\n[API/MODELS] OLLAMA_MODE={OLLAMA_MODE}")
-        print(f"[API/MODELS] base_url={ollama_config.base_url}")
-        
         ollama = OllamaClient()
-        print(f"[API/MODELS] OllamaClient создан: {type(ollama).__name__}")
         
+        # Получаем ВСЕ скачанные модели (это быстро)
         available = ollama.get_available_models()
-        print(f"[API/MODELS] available_models: {len(available)} шт.")
-        for i, m in enumerate(available, 1):
-            print(f"[API/MODELS]   {i}. {m}")
         
-        active = ollama.get_active_models()
-        print(f"[API/MODELS] active_models: {len(active)} шт.\n")
+        # Получаем активные модели (может быть медленно или недоступно)
+        # Если не получилось - не ломаем всё, возвращаем пустой список
+        try:
+            active = ollama.get_active_models()
+        except Exception as e:
+            print(f"[API/MODELS] Не удалось получить active_models: {e}")
+            active = []
 
         return {
             "available_models": available,
