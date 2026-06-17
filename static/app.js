@@ -922,12 +922,6 @@ function bindEventHandlers() {
     });
   }
 
-  // Загрузка промтов
-  const loadPromptsBtn = $('loadPrompts');
-  if (loadPromptsBtn) {
-    loadPromptsBtn.onclick = loadPromptsFromServer;
-  }
-
   // Сохранение промтов
   const savePromptsBtn = $('savePrompts');
   if (savePromptsBtn) {
@@ -945,48 +939,6 @@ function bindEventHandlers() {
         $('promptFix').value = defaultPrompts.fix || '';
       }
     };
-  }
-}
-
-// ============ Режим разработчика: Промты ============
-async function loadPromptsFromServer() {
-  const btn = $('loadPrompts');
-  if (!btn) return;
-  
-  const origHtml = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Загрузка...';
-  
-  try {
-    const res = await fetch(`${API}/prompts`);
-    if (!res.ok) throw new Error('Ошибка загрузки: ' + res.status);
-    
-    const data = await res.json();
-    defaultPrompts = data.default_prompts || {};
-    const current = data.current_prompts || {};
-    
-    // Заполняем поля
-    $('promptTranslate').value = current.translate || defaultPrompts.translate || '';
-    $('promptAnnotate').value = current.annotate || defaultPrompts.annotate || '';
-    $('promptReview').value = current.review || defaultPrompts.review || '';
-    $('promptFix').value = current.fix || defaultPrompts.fix || '';
-    
-    // Заполняем поля настроек
-    if (data.config) {
-      $('maxAnnotationChars').value = data.config.max_annotation_chars || 800;
-      $('maxReviewIterations').value = data.config.max_review_iterations || 2;
-    }
-    
-    btn.innerHTML = '<i class="bi bi-check me-1"></i>Загружено';
-    setTimeout(() => {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="bi bi-download me-1"></i>Загрузить из файлов';
-    }, 1500);
-    
-  } catch (err) {
-    showValidationError('Ошибка загрузки промтов: ' + err.message);
-    btn.disabled = false;
-    btn.innerHTML = origHtml;
   }
 }
 
@@ -1041,9 +993,6 @@ async function initializeApp() {
   // Запускаем загрузку моделей и проверку параллельно
   loadModels();
   checkConnection();
-  
-  // Загружаем промты для режима разработчика
-  loadPromptsFromServer();
 }
 
 // Запуск после загрузки DOM

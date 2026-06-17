@@ -131,7 +131,7 @@ class OllamaClient:
         response = self._call_model(self.config.review_model, prompt)
         
         # Парсим ответ
-        annotation = initial_annotation
+        annotation = initial_annotation  # По умолчанию оставляем исходную
         status = "passed"
         report = "Проверка пройдена без замечаний"
         
@@ -150,8 +150,14 @@ class OllamaClient:
             report_part = response.split("===ОТЧЁТ===")[1].split("===ПЕРЕСКАЗ===")[0].strip()
             annotation_part = response.split("===ПЕРЕСКАЗ===")[1].split("===КОНЕЦ===")[0].strip() if "===КОНЕЦ===" in response else response.split("===ПЕРЕСКАЗ===")[1].strip()
             
-            annotation = annotation_part if annotation_part else annotation
-            report = report_part
+            # Берём улучшенную версию ТОЛЬКО если она не пустая и отличается от маркеров
+            if annotation_part and len(annotation_part) > 10 and not annotation_part.startswith("[") and not annotation_part.startswith("Улучшенная"):
+                annotation = annotation_part
+            else:
+                # Если нейросеть вернула мусор — оставляем исходную аннотацию
+                annotation = initial_annotation
+            
+            report = report_part if report_part else "Проверка завершена"
             
             # Определяем статус по ключевым словам
             if status_part.upper() == "PASS":
@@ -159,9 +165,10 @@ class OllamaClient:
             else:
                 status = "failed"
         else:
-            # Если формат не распознан, считаем что проверка пройдена
-            annotation = response if response else initial_annotation
-            report = "Проверка завершена"
+            # Если формат не распознан — оставляем исходную аннотацию без изменений
+            # НЕ берём ответ нейросети чтобы избежать мусора вида "[улучшенная версия не требуется...]"
+            annotation = initial_annotation
+            report = "Проверка завершена (формат ответа не распознан)"
             status = "passed"
         
         return annotation, status, report
@@ -180,4 +187,15 @@ class OllamaClient:
             max_chars=pipeline_config.max_annotation_chars
         )
         
-        return self._call_model(self.config.review_model, prompt)
+        response = self._call_model(self.config.review_model, prompt)
+        
+        # Если ответ пустой или содержит мусор — возвращаем исходную аннотацию
+        if not response or len(response) < 10:
+            return annotation
+        
+        # Если ответ начинается с объяснений а не с пересказа — пытаемся очистить
+        if response.startswith("[") or response.startswith("Улучшенная") or response.startswith("Исправленная"):
+            # Нейросеть не suivала формату, возвращаем исходную
+            return annotation
+        
+        return response
