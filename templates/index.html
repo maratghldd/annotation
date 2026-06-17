@@ -376,6 +376,68 @@
           </div>
         </div>
 
+        <!-- Режим разработчика -->
+        <div class="card mb-4 border-0 shadow-sm">
+          <div class="card-header bg-warning bg-opacity-10">
+            <button class="btn btn-link text-decoration-none p-0 text-warning-emphasis" type="button" data-bs-toggle="collapse" data-bs-target="#devSettings">
+              <i class="bi bi-code-slash me-2"></i>Режим разработчика <i class="bi bi-chevron-down ms-2" id="devSettingsIcon"></i>
+            </button>
+          </div>
+          <div class="collapse" id="devSettings">
+            <div class="card-body">
+              <!-- Параметры pipeline -->
+              <h6 class="mb-3"><i class="bi bi-sliders me-2"></i>Параметры конвейера</h6>
+              <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                  <label class="form-label">Макс. длина аннотации (символов)</label>
+                  <input type="number" class="form-control" id="maxAnnotationChars" value="800" min="100" max="10000" step="100">
+                  <small class="text-muted">По умолчанию: 800</small>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Макс. итераций проверки</label>
+                  <input type="number" class="form-control" id="maxReviewIterations" value="2" min="1" max="5" step="1">
+                  <small class="text-muted">По умолчанию: 2</small>
+                </div>
+              </div>
+
+              <!-- Промты -->
+              <h6 class="mb-3"><i class="bi bi-file-earmark-text me-2"></i>Шаблоны промтов</h6>
+              
+              <div class="mb-3">
+                <label class="form-label">Промт перевода</label>
+                <textarea class="form-control font-monospace" id="promptTranslate" rows="6" style="font-size: 13px;"></textarea>
+              </div>
+              
+              <div class="mb-3">
+                <label class="form-label">Промт аннотирования</label>
+                <textarea class="form-control font-monospace" id="promptAnnotate" rows="6" style="font-size: 13px;"></textarea>
+              </div>
+              
+              <div class="mb-3">
+                <label class="form-label">Промт проверки</label>
+                <textarea class="form-control font-monospace" id="promptReview" rows="6" style="font-size: 13px;"></textarea>
+              </div>
+              
+              <div class="mb-3">
+                <label class="form-label">Промт исправления</label>
+                <textarea class="form-control font-monospace" id="promptFix" rows="6" style="font-size: 13px;"></textarea>
+              </div>
+
+              <div class="d-flex gap-2">
+                <button type="button" class="btn btn-outline-primary btn-sm" id="loadPrompts">
+                  <i class="bi bi-download me-1"></i>Загрузить из файлов
+                </button>
+                <button type="button" class="btn btn-outline-success btn-sm" id="savePrompts">
+                  <i class="bi bi-save me-1"></i>Сохранить в файлы
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="resetPrompts">
+                  <i class="bi bi-arrow-counterclockwise me-1"></i>Сбросить к стандартным
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <ul class="nav nav-pills mb-4">
           <li class="nav-item"><a class="nav-link active" href="#" data-mode="folder">Режим «Папка»</a></li>
           <li class="nav-item"><a class="nav-link" href="#" data-mode="file">Режим «Один файл»</a></li>
@@ -508,7 +570,6 @@
   </div>
 
   <script src="/static/js/bootstrap.bundle.min.js"></script>
-  <script src="/static/app.js?v=17"></script>
-  <script src="/static/app.js?v=100"></script>
+  <script src="/static/app.js?v=101"></script>
 </body>
 </html>

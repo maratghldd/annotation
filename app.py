@@ -64,7 +64,9 @@ def run_folder_analysis_task(
     review_model: Optional[str] = None,
     enable_translation: Optional[bool] = None,
     enable_annotation: Optional[bool] = None,
-    enable_review: Optional[bool] = None
+    enable_review: Optional[bool] = None,
+    max_annotation_chars: Optional[int] = None,
+    max_review_iterations: Optional[int] = None
 ):
     task_created_files[task_id] = []
     try:
@@ -133,11 +135,13 @@ def run_folder_analysis_task(
             config=model_config
         )
         
-        # Настройка pipeline
+        # Настройка pipeline с новыми параметрами
         pipe_config = PipelineConfig(
             enable_translation=enable_translation if enable_translation is not None else pipeline_config.enable_translation,
             enable_annotation=enable_annotation if enable_annotation is not None else pipeline_config.enable_annotation,
-            enable_review=enable_review if enable_review is not None else pipeline_config.enable_review
+            enable_review=enable_review if enable_review is not None else pipeline_config.enable_review,
+            max_annotation_chars=max_annotation_chars if max_annotation_chars is not None else pipeline_config.max_annotation_chars,
+            max_review_iterations=max_review_iterations if max_review_iterations is not None else pipeline_config.max_review_iterations
         )
 
         analyzer = DocumentAnalyzer(
@@ -293,6 +297,8 @@ class AnalyzeFolderRequest(BaseModel):
     enable_translation: Optional[bool] = None
     enable_annotation: Optional[bool] = None
     enable_review: Optional[bool] = None
+    max_annotation_chars: Optional[int] = None
+    max_review_iterations: Optional[int] = None
 
     @field_validator('translate_model', 'annotate_model', 'review_model')
     @classmethod
@@ -374,7 +380,8 @@ async def analyze_folder(req: AnalyzeFolderRequest, background_tasks: Background
         run_folder_analysis_task,
         task_id, source, output,
         req.translate_model, req.annotate_model, req.review_model,
-        req.enable_translation, req.enable_annotation, req.enable_review
+        req.enable_translation, req.enable_annotation, req.enable_review,
+        req.max_annotation_chars, req.max_review_iterations
     )
     return {"task_id": task_id, "status": "pending"}
 
@@ -723,6 +730,76 @@ async def export_results(task_id: str, format: str = "txt"):
         media_type="text/plain; charset=utf-8",
         headers={"Content-Disposition": "attachment; filename=результаты_анализа.txt"}
     )
+
+
+@app.get("/api/prompts")
+async def get_prompts():
+    """Получить текущие и стандартные промты."""
+    try:
+        from core.prompts import prompt_loader
+        
+        # Получаем стандартные промты (из файлов по умолчанию)
+        default_prompts = {
+            "translate": prompt_loader.get_default_template("translate"),
+            "annotate": prompt_loader.get_default_template("annotate"),
+            "review": prompt_loader.get_default_template("review"),
+            "fix": prompt_loader.get_default_template("fix"),
+        }
+        
+        # Получаем текущие промты (могут быть изменены)
+        current_prompts = {
+            "translate": prompt_loader.get_current_template("translate"),
+            "annotate": prompt_loader.get_current_template("annotate"),
+            "review": prompt_loader.get_current_template("review"),
+            "fix": prompt_loader.get_current_template("fix"),
+        }
+        
+        return {
+            "default_prompts": default_prompts,
+            "current_prompts": current_prompts,
+            "config": {
+                "max_annotation_chars": pipeline_config.max_annotation_chars,
+                "max_review_iterations": pipeline_config.max_review_iterations,
+            }
+        }
+    except Exception as e:
+        print(f"Ошибка в /api/prompts: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/prompts")
+async def save_prompts(req: BaseModel):
+    """Сохранить промты и настройки в файлы."""
+    try:
+        data = req.dict()
+        prompts = data.get("prompts", {})
+        config = data.get("config", {})
+        
+        # Сохраняем промты в файлы
+        from core.prompts import prompt_loader
+        
+        if "translate" in prompts:
+            prompt_loader.save_template("translate", prompts["translate"])
+        if "annotate" in prompts:
+            prompt_loader.save_template("annotate", prompts["annotate"])
+        if "review" in prompts:
+            prompt_loader.save_template("review", prompts["review"])
+        if "fix" in prompts:
+            prompt_loader.save_template("fix", prompts["fix"])
+        
+        # TODO: Сохранение конфигурации (требует изменения config.py)
+        # Пока только логируем
+        if config:
+            print(f"[SAVE PROMPTS] Конфигурация: {config}")
+        
+        return {"ok": True, "message": "Промты сохранены"}
+    except Exception as e:
+        print(f"Ошибка сохранения промтов: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/browse")

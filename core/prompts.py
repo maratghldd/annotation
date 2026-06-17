@@ -46,6 +46,91 @@ class PromptLoader:
         # Рендерим с переменными
         return template.render(**kwargs)
     
+    def get_current_template(self, prompt_name: str) -> str:
+        """Получает текущий текст промта (без рендеринга)."""
+        file_path = self.prompts_dir / f"{prompt_name}.txt"
+        if not file_path.exists():
+            return ""
+        
+        with open(file_path, "r", encoding="utf-8") as f:
+            return f.read()
+    
+    def get_default_template(self, prompt_name: str) -> str:
+        """Получает стандартный промт (заранее определённый)."""
+        defaults = {
+            "translate": """Переведи следующий текст на русский язык.
+Сохраняй деловой стиль и терминологию.
+
+Текст для перевода:
+{{ text }}
+
+Перевод:""",
+            
+            "annotate": """Сделай краткий пересказ документа "{{ filename }}".
+
+Текст документа:
+{{ text }}
+
+Требования:
+- Объем: не более {{ max_chars }} символов
+- Язык: русский
+- Стиль: деловой
+- Выдели основную суть
+
+Пересказ:""",
+            
+            "review": """Проверь качество пересказа документа.
+
+Оригинальный текст:
+{{ original_text }}
+
+Пересказ:
+{{ annotation }}
+
+Оцени пересказ по критериям:
+1. Полнота (все ли ключевые моменты отражены)
+2. Точность (нет ли искажений)
+3. Лаконичность (нет ли лишних деталей)
+
+Ответь в формате:
+===СТАТУС===
+PASS или FAIL
+===ОТЧЁТ===
+[текст замечаний или "Замечаний нет"]
+===ПЕРЕСКАЗ===
+[улучшенная версия пересказа, если есть замечания]
+===КОНЕЦ===""",
+            
+            "fix": """Устрани замечания в пересказе документа.
+
+Оригинальный текст:
+{{ original_text }}
+
+Текущий пересказ:
+{{ annotation }}
+
+Замечания:
+{{ issues }}
+
+Исправленный пересказ (объем до {{ max_chars }} символов):""",
+        }
+        
+        return defaults.get(prompt_name, "")
+    
+    def save_template(self, prompt_name: str, content: str):
+        """Сохраняет промт в файл."""
+        file_path = self.prompts_dir / f"{prompt_name}.txt"
+        
+        # Создаём директорию если нет
+        self.prompts_dir.mkdir(parents=True, exist_ok=True)
+        
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        
+        # Очищаем кэш для этого промта
+        if prompt_name in self._cache:
+            del self._cache[prompt_name]
+    
     def reload(self):
         """Перезагружает все промпты из файлов (полезно при разработке)."""
         self._cache.clear()

@@ -11,6 +11,7 @@ let availableModels = [];
 let currentPipelineConfig = {};
 let browseTarget = null;
 let browseModalInstance = null;
+let defaultPrompts = {};  // Стандартные промты
 
 // ============ Утилиты ============
 function $(id) { return document.getElementById(id); }
@@ -267,7 +268,10 @@ async function runFolderAnalysis() {
         annotate_model: $('annotateModel').value,
         review_model: $('reviewModel').value,
         enable_translation: $('enableTranslation').checked,
-        enable_review: $('enableReview').checked
+        enable_review: $('enableReview').checked,
+        // Параметры из режима разработчика
+        max_annotation_chars: parseInt($('maxAnnotationChars').value) || 800,
+        max_review_iterations: parseInt($('maxReviewIterations').value) || 2
       })
     });
     const data = await res.json();
@@ -905,6 +909,126 @@ function bindEventHandlers() {
       renderTable(currentResults);
     });
   });
+
+  // Режим разработчика - иконка свертывания
+  const devToggle = document.querySelector('[data-bs-toggle="collapse"][data-bs-target="#devSettings"]');
+  if (devToggle) {
+    devToggle.addEventListener('click', () => {
+      const icon = $('devSettingsIcon');
+      if (icon) {
+        icon.classList.toggle('bi-chevron-down');
+        icon.classList.toggle('bi-chevron-up');
+      }
+    });
+  }
+
+  // Загрузка промтов
+  const loadPromptsBtn = $('loadPrompts');
+  if (loadPromptsBtn) {
+    loadPromptsBtn.onclick = loadPromptsFromServer;
+  }
+
+  // Сохранение промтов
+  const savePromptsBtn = $('savePrompts');
+  if (savePromptsBtn) {
+    savePromptsBtn.onclick = savePromptsToServer;
+  }
+
+  // Сброс промтов
+  const resetPromptsBtn = $('resetPrompts');
+  if (resetPromptsBtn) {
+    resetPromptsBtn.onclick = () => {
+      if (Object.keys(defaultPrompts).length > 0) {
+        $('promptTranslate').value = defaultPrompts.translate || '';
+        $('promptAnnotate').value = defaultPrompts.annotate || '';
+        $('promptReview').value = defaultPrompts.review || '';
+        $('promptFix').value = defaultPrompts.fix || '';
+      }
+    };
+  }
+}
+
+// ============ Режим разработчика: Промты ============
+async function loadPromptsFromServer() {
+  const btn = $('loadPrompts');
+  if (!btn) return;
+  
+  const origHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Загрузка...';
+  
+  try {
+    const res = await fetch(`${API}/prompts`);
+    if (!res.ok) throw new Error('Ошибка загрузки: ' + res.status);
+    
+    const data = await res.json();
+    defaultPrompts = data.default_prompts || {};
+    const current = data.current_prompts || {};
+    
+    // Заполняем поля
+    $('promptTranslate').value = current.translate || defaultPrompts.translate || '';
+    $('promptAnnotate').value = current.annotate || defaultPrompts.annotate || '';
+    $('promptReview').value = current.review || defaultPrompts.review || '';
+    $('promptFix').value = current.fix || defaultPrompts.fix || '';
+    
+    // Заполняем поля настроек
+    if (data.config) {
+      $('maxAnnotationChars').value = data.config.max_annotation_chars || 800;
+      $('maxReviewIterations').value = data.config.max_review_iterations || 2;
+    }
+    
+    btn.innerHTML = '<i class="bi bi-check me-1"></i>Загружено';
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-download me-1"></i>Загрузить из файлов';
+    }, 1500);
+    
+  } catch (err) {
+    showValidationError('Ошибка загрузки промтов: ' + err.message);
+    btn.disabled = false;
+    btn.innerHTML = origHtml;
+  }
+}
+
+async function savePromptsToServer() {
+  const btn = $('savePrompts');
+  if (!btn) return;
+  
+  const origHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Сохранение...';
+  
+  try {
+    const res = await fetch(`${API}/prompts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompts: {
+          translate: $('promptTranslate').value,
+          annotate: $('promptAnnotate').value,
+          review: $('promptReview').value,
+          fix: $('promptFix').value
+        },
+        config: {
+          max_annotation_chars: parseInt($('maxAnnotationChars').value) || 800,
+          max_review_iterations: parseInt($('maxReviewIterations').value) || 2
+        }
+      })
+    });
+    
+    if (!res.ok) throw new Error('Ошибка сохранения: ' + res.status);
+    
+    btn.innerHTML = '<i class="bi bi-check me-1"></i>Сохранено';
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-save me-1"></i>Сохранить в файлы';
+    }, 1500);
+    
+  } catch (err) {
+    showValidationError('Ошибка сохранения: ' + err.message);
+    btn.disabled = false;
+    btn.innerHTML = origHtml;
+  }
 }
 
 // ============ Инициализация ============
@@ -917,6 +1041,9 @@ async function initializeApp() {
   // Запускаем загрузку моделей и проверку параллельно
   loadModels();
   checkConnection();
+  
+  // Загружаем промты для режима разработчика
+  loadPromptsFromServer();
 }
 
 // Запуск после загрузки DOM

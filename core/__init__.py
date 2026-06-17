@@ -11,24 +11,26 @@ if _ollama_mode == "local":
     
     # Создаём класс-обёртку чтобы можно было создавать экземпляры
     class PipelineConfig:
-        def __init__(self, enable_translation=None, enable_annotation=None, enable_review=None):
+        def __init__(self, enable_translation=None, enable_annotation=None, enable_review=None, 
+                     max_annotation_chars=None, max_review_iterations=None):
             self.enable_translation = enable_translation if enable_translation is not None else _local_pipeline_config.enable_translation
             self.enable_annotation = enable_annotation if enable_annotation is not None else _local_pipeline_config.enable_annotation
             self.enable_review = enable_review if enable_review is not None else _local_pipeline_config.enable_review
-            self.max_review_iterations = _local_pipeline_config.max_review_iterations
-            self.max_annotation_chars = _local_pipeline_config.max_annotation_chars
+            self.max_annotation_chars = max_annotation_chars if max_annotation_chars is not None else _local_pipeline_config.max_annotation_chars
+            self.max_review_iterations = max_review_iterations if max_review_iterations is not None else _local_pipeline_config.max_review_iterations
 else:
     from .ollama_models import OllamaClient, OllamaModelConfig
     from config import pipeline_config as _pipeline_config
     
     # Создаём класс-обёртку чтобы можно было создавать экземпляры
     class PipelineConfig:
-        def __init__(self, enable_translation=None, enable_annotation=None, enable_review=None):
+        def __init__(self, enable_translation=None, enable_annotation=None, enable_review=None,
+                     max_annotation_chars=None, max_review_iterations=None):
             self.enable_translation = enable_translation if enable_translation is not None else _pipeline_config.enable_translation
             self.enable_annotation = enable_annotation if enable_annotation is not None else _pipeline_config.enable_annotation
             self.enable_review = enable_review if enable_review is not None else _pipeline_config.enable_review
-            self.max_review_iterations = _pipeline_config.max_review_iterations
-            self.max_annotation_chars = _pipeline_config.max_annotation_chars
+            self.max_annotation_chars = max_annotation_chars if max_annotation_chars is not None else _pipeline_config.max_annotation_chars
+            self.max_review_iterations = max_review_iterations if max_review_iterations is not None else _pipeline_config.max_review_iterations
 
 from .processing import DocumentProcessor
 from .analysis import DocumentAnalyzer, AnalysisResult
