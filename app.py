@@ -347,6 +347,12 @@ class CancelTaskRequest(BaseModel):
     task_id: str
 
 
+class SavePromptsRequest(BaseModel):
+    """Запрос для сохранения промтов."""
+    prompts: Optional[dict] = None
+    config: Optional[dict] = None
+
+
 class GetModelsRequest(BaseModel):
     """Запрос для получения доступных моделей."""
     pass
@@ -475,9 +481,9 @@ async def get_available_models():
 
 
 @app.post("/api/load-model")
-async def load_model(req: BaseModel):
+async def load_model(req: GetModelsRequest):
     """Загрузить модель в оперативную память."""
-    model_name = req.dict().get('model_name', '')
+    model_name = req.model_dump().get('model_name', '')
     if not model_name:
         raise HTTPException(status_code=400, detail="Имя модели не указано")
     
@@ -770,10 +776,10 @@ async def get_prompts():
 
 
 @app.post("/api/prompts")
-async def save_prompts(req: BaseModel):
+async def save_prompts(req: SavePromptsRequest):
     """Сохранить промты и настройки в файлы."""
     try:
-        data = req.dict()
+        data = req.model_dump()
         prompts = data.get("prompts", {})
         config = data.get("config", {})
         
