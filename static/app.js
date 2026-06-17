@@ -931,15 +931,58 @@ function bindEventHandlers() {
   // Сброс промтов
   const resetPromptsBtn = $('resetPrompts');
   if (resetPromptsBtn) {
-    resetPromptsBtn.onclick = () => {
-      if (Object.keys(defaultPrompts).length > 0) {
-        $('promptTranslate').value = defaultPrompts.translate || '';
-        $('promptAnnotate').value = defaultPrompts.annotate || '';
-        $('promptReview').value = defaultPrompts.review || '';
-        $('promptFix').value = defaultPrompts.fix || '';
-      }
-    };
+    resetPromptsBtn.onclick = resetPromptsToDefault;
   }
+  
+  // Загружаем промты при инициализации
+  loadPromptsFromServer();
+}
+
+// ============ Режим разработчика: Промты ============
+async function loadPromptsFromServer() {
+  try {
+    const res = await fetch(`${API}/prompts`);
+    if (!res.ok) {
+      console.warn('[loadPrompts] Не удалось загрузить:', res.status);
+      return;
+    }
+    
+    const data = await res.json();
+    defaultPrompts = data.default_prompts || {};
+    const current = data.current_prompts || {};
+    
+    // Заполняем поля текущими значениями
+    $('promptTranslate').value = current.translate || defaultPrompts.translate || '';
+    $('promptAnnotate').value = current.annotate || defaultPrompts.annotate || '';
+    $('promptReview').value = current.review || defaultPrompts.review || '';
+    $('promptFix').value = current.fix || defaultPrompts.fix || '';
+    
+    // Заполняем поля настроек
+    if (data.config) {
+      $('maxAnnotationChars').value = data.config.max_annotation_chars || 800;
+      $('maxReviewIterations').value = data.config.max_review_iterations || 2;
+    }
+    
+    console.log('[loadPrompts] Промты загружены');
+  } catch (err) {
+    console.error('[loadPrompts] Ошибка:', err);
+  }
+}
+
+function resetPromptsToDefault() {
+  if (Object.keys(defaultPrompts).length === 0) {
+    showValidationError('Стандартные промты ещё не загружены');
+    return;
+  }
+  
+  $('promptTranslate').value = defaultPrompts.translate || '';
+  $('promptAnnotate').value = defaultPrompts.annotate || '';
+  $('promptReview').value = defaultPrompts.review || '';
+  $('promptFix').value = defaultPrompts.fix || '';
+  
+  // Сбрасываем настройки к стандартным
+  $('maxAnnotationChars').value = 800;
+  $('maxReviewIterations').value = 2;
 }
 
 async function savePromptsToServer() {
