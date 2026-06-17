@@ -3,21 +3,18 @@ import io
 import os
 import uuid
 import asyncio
+import time
 import requests
 from pathlib import Path
 from typing import Dict, List, Optional
 from contextlib import asynccontextmanager
 
-# ВАЖНО: Сначала читаем режим, ПОТОМ импортируем core!
+# Читаем режим из переменной окружения (устанавливается в run.py)
 OLLAMA_MODE = os.environ.get("OLLAMA_MODE", "remote")
-
-# Отладка: выводим переменные окружения
-print(f"\n[APP.PY START] OLLAMA_MODE={OLLAMA_MODE}")
-print(f"[APP.PY START] OLLAMA_URL={os.environ.get('OLLAMA_URL', 'НЕ УСТАНОВЛЕНА')}")
-print(f"[APP.PY START] OLLAMA_VERIFY_SSL={os.environ.get('OLLAMA_VERIFY_SSL', 'НЕ УСТАНОВЛЕНА')}\n")
 
 if OLLAMA_MODE == "local":
     from config_local import ollama_local_config as ollama_config
+    # Для локального режима используем значения по умолчанию
     class _pipeline_config_defaults:
         enable_translation = True
         enable_annotation = True
@@ -28,7 +25,7 @@ if OLLAMA_MODE == "local":
 else:
     from config import ollama_config, pipeline_config
 
-# Теперь импортируем core (использует правильный режим)
+# Теперь импортируем core
 from fastapi import FastAPI, BackgroundTasks, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, Form
 from fastapi.responses import FileResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -119,7 +116,6 @@ def run_folder_analysis_task(
                     log_callback(f"   ✅ Модель {model_name} загружена в оперативную память")
                     
                     # Пауза чтобы модель стабилизировалась
-                    import time
                     time.sleep(2)
                     
                 except Exception as e:
