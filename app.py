@@ -130,11 +130,6 @@ def run_folder_analysis_task(
             review_model=review_model
         )
         
-        ollama_client = OllamaClient(
-            base_url=ollama_config.base_url,
-            config=model_config
-        )
-        
         # Настройка pipeline с новыми параметрами
         pipe_config = PipelineConfig(
             enable_translation=enable_translation if enable_translation is not None else pipeline_config.enable_translation,
@@ -144,6 +139,12 @@ def run_folder_analysis_task(
             max_review_iterations=max_review_iterations if max_review_iterations is not None else pipeline_config.max_review_iterations
         )
 
+        ollama_client = OllamaClient(
+            base_url=ollama_config.base_url,
+            config=model_config,
+            pipeline_config=pipe_config  # Передаём конфигурацию pipeline
+        )
+        
         analyzer = DocumentAnalyzer(
             ollama_client=ollama_client,
             log_callback=log_callback,
@@ -223,7 +224,9 @@ def run_single_file_task(
     output_dir: Path,
     translate_model: str,
     annotate_model: str,
-    review_model: str
+    review_model: str,
+    max_annotation_chars: Optional[int] = None,
+    max_review_iterations: Optional[int] = None
 ):
     try:
         tasks[task_id]["status"] = "running"
@@ -238,14 +241,26 @@ def run_single_file_task(
             review_model=review_model
         )
         
+        # Создаём конфигурацию pipeline с переданными параметрами
+        pipe_config = PipelineConfig(
+            enable_translation=True,
+            enable_annotation=True,
+            enable_review=True,
+            max_annotation_chars=max_annotation_chars if max_annotation_chars is not None else pipeline_config.max_annotation_chars,
+            max_review_iterations=max_review_iterations if max_review_iterations is not None else pipeline_config.max_review_iterations
+        )
+
+        # Используем конфигурацию pipeline с переданными параметрами
         ollama_client = OllamaClient(
             base_url=ollama_config.base_url,
-            config=model_config
+            config=model_config,
+            pipeline_config=pipe_config
         )
-        
+
         analyzer = DocumentAnalyzer(
             ollama_client=ollama_client,
-            log_callback=get_log_callback(task_id)
+            log_callback=get_log_callback(task_id),
+            config=pipe_config
         )
         result = analyzer.analyze_single_file(file_path, output_dir)
 
@@ -398,7 +413,9 @@ async def analyze_file(
     file: UploadFile = Form(...),
     translate_model: Optional[str] = Form(None),
     annotate_model: Optional[str] = Form(None),
-    review_model: Optional[str] = Form(None)
+    review_model: Optional[str] = Form(None),
+    max_annotation_chars: Optional[int] = Form(None),
+    max_review_iterations: Optional[int] = Form(None)
 ):
     allowed = {".docx", ".doc", ".pdf"}
     ext = Path(file.filename or "").suffix.lower()
@@ -424,7 +441,8 @@ async def analyze_file(
     background_tasks.add_task(
         run_single_file_task,
         task_id, file_path, output_dir,
-        translate_model, annotate_model, review_model
+        translate_model, annotate_model, review_model,
+        max_annotation_chars, max_review_iterations
     )
     return {"task_id": task_id, "status": "pending"}
 

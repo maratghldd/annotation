@@ -19,9 +19,10 @@ class OllamaModelConfig:
 class OllamaClient:
     """Клиент для взаимодействия с Ollama API."""
     
-    def __init__(self, base_url: str = None, config: OllamaModelConfig = None):
+    def __init__(self, base_url: str = None, config: OllamaModelConfig = None, pipeline_config=None):
         self.base_url = (base_url or ollama_config.base_url).rstrip("/")
         self.config = config
+        self.pipeline_config = pipeline_config  # Конфигурация pipeline (max_annotation_chars и т.д.)
         self.verify = ollama_config.verify_ssl
         self.default_timeout = (10, 900)  # (connect, read) — 15 минут для больших моделей
     
@@ -103,12 +104,15 @@ class OllamaClient:
         if not self.config:
             raise ValueError("Конфигурация моделей не установлена")
         
+        # Используем pipeline_config из экземпляра, иначе глобальный
+        max_chars = self.pipeline_config.max_annotation_chars if self.pipeline_config else pipeline_config.max_annotation_chars
+        
         # Загружаем промпт из файла с лимитом символов
         prompt = prompt_loader.load(
             "annotate",
             filename=filename,
             text=text[:5000],
-            max_chars=pipeline_config.max_annotation_chars
+            max_chars=max_chars
         )
         
         return self._call_model(self.config.annotate_model, prompt)
@@ -178,13 +182,16 @@ class OllamaClient:
         if not self.config:
             raise ValueError("Конфигурация моделей не установлена")
         
+        # Используем pipeline_config из экземпляра, иначе глобальный
+        max_chars = self.pipeline_config.max_annotation_chars if self.pipeline_config else pipeline_config.max_annotation_chars
+        
         # Загружаем промпт из файла с лимитом символов
         prompt = prompt_loader.load(
             "fix",
             original_text=text[:4000],
             annotation=annotation,
             issues=issues,
-            max_chars=pipeline_config.max_annotation_chars
+            max_chars=max_chars
         )
         
         response = self._call_model(self.config.review_model, prompt)

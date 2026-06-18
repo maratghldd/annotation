@@ -19,9 +19,10 @@ class OllamaLocalModelConfig:
 class OllamaLocalClient:
     """Клиент для взаимодействия с локальной Ollama."""
     
-    def __init__(self, base_url: str = None, config: OllamaLocalModelConfig = None):
+    def __init__(self, base_url: str = None, config: OllamaLocalModelConfig = None, pipeline_config=None):
         self.base_url = (base_url or ollama_local_config.base_url).rstrip("/")
         self.config = config
+        self.pipeline_config = pipeline_config  # Конфигурация pipeline (max_annotation_chars и т.д.)
         self.verify = ollama_local_config.verify_ssl
         self.default_timeout = (10, 600)  # (connect, read) — локально может быть медленнее
     
@@ -101,11 +102,14 @@ class OllamaLocalClient:
         if not self.config:
             raise ValueError("Конфигурация моделей не установлена")
         
+        # Используем pipeline_config из экземпляра, иначе глобальный
+        max_chars = self.pipeline_config.max_annotation_chars if self.pipeline_config else local_pipeline_config.max_annotation_chars
+        
         prompt = prompt_loader.load(
             "annotate",
             filename=filename,
             text=text[:5000],
-            max_chars=local_pipeline_config.max_annotation_chars
+            max_chars=max_chars
         )
         
         return self._call_model(self.config.annotate_model, prompt)
@@ -155,12 +159,15 @@ class OllamaLocalClient:
         if not self.config:
             raise ValueError("Конфигурация моделей не установлена")
         
+        # Используем pipeline_config из экземпляра, иначе глобальный
+        max_chars = self.pipeline_config.max_annotation_chars if self.pipeline_config else local_pipeline_config.max_annotation_chars
+        
         prompt = prompt_loader.load(
             "fix",
             original_text=text[:4000],
             annotation=annotation,
             issues=issues,
-            max_chars=local_pipeline_config.max_annotation_chars
+            max_chars=max_chars
         )
         
         return self._call_model(self.config.review_model, prompt)

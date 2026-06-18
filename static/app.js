@@ -376,6 +376,9 @@ async function handleFile(file) {
   fd.append('translate_model', $('translateModel').value);
   fd.append('annotate_model', $('annotateModel').value);
   fd.append('review_model', $('reviewModel').value);
+  // Передаём параметры из режима разработчика
+  fd.append('max_annotation_chars', $('maxAnnotationChars').value || 800);
+  fd.append('max_review_iterations', $('maxReviewIterations').value || 2);
 
   const resultDiv = $('singleFileResult');
   resultDiv.classList.remove('d-none', 'alert-success', 'alert-danger', 'alert-warning');
