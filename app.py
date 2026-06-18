@@ -169,7 +169,8 @@ def run_folder_analysis_task(
                 "status": r.status, 
                 "file_path": r.file_path,
                 "review_status": r.review_status,
-                "review_report": r.review_report
+                "review_report": r.review_report,
+                "relative_path": r.relative_path  # Относительный путь к файлу
             }
             for r in results
         ]
@@ -262,7 +263,7 @@ def run_single_file_task(
             log_callback=get_log_callback(task_id),
             config=pipe_config
         )
-        result = analyzer.analyze_single_file(file_path, output_dir)
+        result = analyzer.analyze_single_file(file_path, output_dir, file_path.parent)
 
         task_results[task_id] = [{
             "file_name": result.file_name,
@@ -271,7 +272,8 @@ def run_single_file_task(
             "status": result.status,
             "file_path": result.file_path,
             "review_status": result.review_status,
-            "review_report": result.review_report
+            "review_report": result.review_report,
+            "relative_path": result.relative_path
         }]
         tasks[task_id]["status"] = "completed"
         get_log_callback(task_id)("\nАнализ завершён")

@@ -454,6 +454,7 @@ function renderTable(results) {
   const q = search.toLowerCase();
   if (q) rows = rows.filter(r =>
     (r.original_name || '').toLowerCase().includes(q) ||
+    (r.relative_path || '').toLowerCase().includes(q) ||
     (r.title || '').toLowerCase().includes(q)
   );
   
@@ -478,9 +479,12 @@ function renderTable(results) {
       ? `<button type="button" class="btn btn-sm btn-outline-success ms-1 fix-review-btn" data-file-name="${escapeHtml(r.file_name || '')}" data-original-name="${escapeHtml(r.original_name || '')}" title="Устранить замечания"><i class="bi bi-check2-square"></i> Устранить</button>`
       : '';
     
+    // Отображаем относительный путь если есть, иначе имя файла
+    const displayName = r.relative_path || r.original_name || r.file_name || '';
+    
     return `<tr data-file="${(r.file_name || r.original_name || '').replace(/"/g, '&quot;')}">
       <td><span class="status-${r.status === 'success' ? 'ok' : 'err'}">${r.status === 'success' ? 'Прочитан' : 'Не прочитан'}</span></td>
-      <td>${escapeHtml(r.original_name || r.file_name || '')}</td>
+      <td><span title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</span></td>
       <td>
         <span class="editable-title" contenteditable="true" data-file-name="${escapeHtml(r.file_name || '')}" data-original-name="${escapeHtml(r.original_name || '')}">${escapeHtml(r.title || '')}</span>
         <button type="button" class="btn btn-sm btn-outline-primary ms-1 save-title-btn d-none" title="Сохранить"><i class="bi bi-check"></i></button>
