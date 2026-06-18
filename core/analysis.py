@@ -48,7 +48,7 @@ class DocumentAnalyzer:
     def analyze_single_file(self, file_path: Path, output_dir: Path, source_folder: Path = None) -> AnalysisResult:
         """Анализ одного файла через весь pipeline."""
         try:
-            # Вычисляем относительный путь от исходной папки
+            # Вычисляем относительный путь от исходной папки (для совместимости)
             relative_path = ""
             if source_folder:
                 try:
@@ -56,6 +56,9 @@ class DocumentAnalyzer:
                 except ValueError:
                     # Если файл не в исходной папке (например, временный)
                     relative_path = file_path.name
+            
+            # Полный абсолютный путь к файлу
+            full_path = str(file_path.resolve())
             
             # Конвертация
             processed = self.processor.process_file(file_path, output_dir)
@@ -65,7 +68,7 @@ class DocumentAnalyzer:
                     title="Ошибка обработки",
                     status="error",
                     original_name=file_path.name,
-                    relative_path=relative_path
+                    relative_path=full_path  # Теперь здесь полный путь
                 )
             
             # Чтение текста
@@ -77,7 +80,7 @@ class DocumentAnalyzer:
                     status="error",
                     original_name=file_path.name,
                     file_path=str(processed),
-                    relative_path=relative_path
+                    relative_path=full_path  # Теперь здесь полный путь
                 )
             
             working_text = text
@@ -85,14 +88,14 @@ class DocumentAnalyzer:
             # Этап 1: Перевод (если включен)
             if self.config.enable_translation:
                 if self._cancel_check():
-                    return AnalysisResult(file_name=file_path.name, title="Остановлено", status="error", original_name=file_path.name, relative_path=relative_path)
+                    return AnalysisResult(file_name=file_path.name, title="Остановлено", status="error", original_name=file_path.name, relative_path=full_path)
                 self._log("   - Этап 1: Проверка языка/Перевод")
                 working_text = self.ollama.translate_text(text)
             
             # Этап 2: Аннотирование
             if self.config.enable_annotation:
                 if self._cancel_check():
-                    return AnalysisResult(file_name=file_path.name, title="Остановлено", status="error", original_name=file_path.name, relative_path=relative_path)
+                    return AnalysisResult(file_name=file_path.name, title="Остановлено", status="error", original_name=file_path.name, relative_path=full_path)
                 self._log("   - Этап 2: Первичная аннотация")
                 initial_title = self.ollama.generate_annotation(working_text, file_path.name)
             else:
@@ -101,7 +104,7 @@ class DocumentAnalyzer:
             # Этап 3: Проверка (с защитой от бесконечного цикла)
             if self.config.enable_review and initial_title:
                 if self._cancel_check():
-                    return AnalysisResult(file_name=file_path.name, title="Остановлено", status="error", original_name=file_path.name, relative_path=relative_path)
+                    return AnalysisResult(file_name=file_path.name, title="Остановлено", status="error", original_name=file_path.name, relative_path=full_path)
                 self._log("   - Этап 3: Проверка достоверности")
                 final_title = initial_title
                 review_status = "passed"
@@ -138,7 +141,7 @@ class DocumentAnalyzer:
                 file_path=str(processed),
                 review_status=review_status,
                 review_report=review_report,
-                relative_path=relative_path
+                relative_path=full_path  # Теперь здесь полный путь
             )
             
         except Exception as e:
@@ -148,7 +151,7 @@ class DocumentAnalyzer:
                 title=f"Ошибка: {str(e)}",
                 status="error",
                 original_name=file_path.name,
-                relative_path=str(file_path)
+                relative_path=str(file_path.resolve())  # Полный путь даже для ошибок
             )
 
     def analyze_folder(self, source: str, output: Path) -> tuple[List[AnalysisResult], List[Path]]:
