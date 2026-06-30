@@ -516,10 +516,18 @@ async def cancel_task(req: CancelTaskRequest):
 async def get_available_models():
     """Получить список доступных моделей из Ollama."""
     try:
-        # Определяем текущий режим из переменной окружения
-        current_mode = os.environ.get("OLLAMA_MODE", "remote")
+        # Читаем текущий режим из файла конфигурации
+        current_mode = "remote"  # по умолчанию
+        try:
+            with open(MODE_CONFIG_FILE, "r", encoding="utf-8") as f:
+                config = json.load(f)
+                current_mode = config.get("ollama_mode", "remote")
+        except FileNotFoundError:
+            pass  # Файла нет, используем default
+        except Exception as e:
+            print(f"[API/MODELS] Ошибка чтения режима: {e}")
         
-        # Используем конфигурацию в зависимости от режима
+        # Определяем конфигурацию в зависимости от режима
         if current_mode == "local":
             from config_local import ollama_local_config
             current_config = ollama_local_config
@@ -544,7 +552,7 @@ async def get_available_models():
             "available_models": available,
             "active_models": active,
             "base_url": current_config.base_url,
-            "current_mode": current_mode,
+            "current_mode": current_mode,  # Возвращаем актуальный режим из файла
             "pipeline_config": {
                 "enable_translation": pipeline_config.enable_translation,
                 "enable_annotation": pipeline_config.enable_annotation,
@@ -559,7 +567,7 @@ async def get_available_models():
             "available_models": [],
             "active_models": [],
             "base_url": ollama_config.base_url,
-            "current_mode": os.environ.get("OLLAMA_MODE", "remote"),
+            "current_mode": "remote",
             "pipeline_config": {},
             "error": str(e)
         }
@@ -924,7 +932,10 @@ async def change_mode(req: ChangeModeRequest):
     """Сменить режим работы Ollama (local/remote) и перезапустить сервер."""
     mode = req.mode.lower()
     
+    print(f"\n📥 [CHANGE-MODE] Получен запрос на смену режима: {mode}")
+    
     if mode not in ["local", "remote"]:
+        print(f"❌ [CHANGE-MODE] Неверный режим: {mode}")
         raise HTTPException(status_code=400, detail="Режим должен быть 'local' или 'remote'")
     
     try:
@@ -932,14 +943,16 @@ async def change_mode(req: ChangeModeRequest):
         with open(MODE_CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump({"ollama_mode": mode}, f, indent=4)
         
-        print(f"\n🔄 Смена режима: {OLLAMA_MODE} → {mode}")
+        print(f"✅ [CHANGE-MODE] Режим сохранён в {MODE_CONFIG_FILE}")
+        print(f"🔄 [CHANGE-MODE] Смена режима: {OLLAMA_MODE} → {mode}")
         print("   Сервер будет перезапущен через 2 секунды...\n")
         
         # Планируем перезапуск сервера
         def restart_server():
             time.sleep(2)  # Даём время на отправку ответа клиенту
-            # Отправляем сигнал перезапуска
-            os.kill(os.getpid(), signal.SIGTERM)
+            print("🔁 [CHANGE-MODE] Выполняется перезапуск (os._exit)...")
+            # Принудительно завершаем процесс - run.py перехватит это и перезапустится
+            os._exit(3)  # Код выхода 3 означает "перезапуск"
         
         # Запускаем перезапуск в фоне
         threading.Thread(target=restart_server, daemon=True).start()
@@ -950,7 +963,7 @@ async def change_mode(req: ChangeModeRequest):
             "mode": mode
         }
     except Exception as e:
-        print(f"Ошибка смены режима: {e}")
+        print(f"❌ [CHANGE-MODE] Ошибка: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

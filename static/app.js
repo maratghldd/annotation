@@ -967,7 +967,10 @@ function bindEventHandlers() {
   // Применение смены режима
   const applyModeBtn = $('applyModeChange');
   if (applyModeBtn) {
+    console.log('[bindEventHandlers] Кнопка смены режима найдена');
     applyModeBtn.onclick = applyModeChange;
+  } else {
+    console.warn('[bindEventHandlers] Кнопка applyModeChange НЕ найдена!');
   }
   
   // Загружаем промты при инициализации
@@ -1066,13 +1069,20 @@ async function savePromptsToServer() {
 async function applyModeChange() {
   const mode = document.querySelector('input[name="ollamaMode"]:checked')?.value || 'remote';
   
+  console.log('[applyModeChange] Выбран режим:', mode);
+  
   const confirmed = confirm(`Вы выбрали режим "${mode === 'local' ? 'Локальный' : 'Удаленный'}".\n\nСервер будет перезапущен через 2 секунды. Страница автоматически обновится.`);
-  if (!confirmed) return;
+  if (!confirmed) {
+    console.log('[applyModeChange] Отменено пользователем');
+    return;
+  }
   
   const btn = $('applyModeChange');
   const originalHtml = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Перезапуск...';
+  
+  console.log('[applyModeChange] Отправка запроса на /api/change-mode...');
   
   try {
     const res = await fetch(`${API}/change-mode`, {
@@ -1081,18 +1091,24 @@ async function applyModeChange() {
       body: JSON.stringify({ mode: mode })
     });
     
+    console.log('[applyModeChange] Ответ сервера:', res.status);
+    
     const data = await res.json();
     
     if (res.ok) {
+      console.log('[applyModeChange] Успех:', data.message);
       btn.innerHTML = '<i class="bi bi-check me-1"></i>Готово! Обновление...';
       // Ждём немного и обновляем страницу
       setTimeout(() => {
+        console.log('[applyModeChange] Перезагрузка страницы...');
         location.reload();
       }, 2500);
     } else {
+      console.error('[applyModeChange] Ошибка:', data);
       throw new Error(data.detail || 'Ошибка смены режима');
     }
   } catch (err) {
+    console.error('[applyModeChange] Исключение:', err);
     showValidationError('Ошибка: ' + err.message);
     btn.disabled = false;
     btn.innerHTML = originalHtml;

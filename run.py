@@ -119,29 +119,44 @@ def run_server():
     print(f"  http://{HOST}:{PORT}")
     print("Остановка: Ctrl+C\n")
     
-    # Запускаем uvicorn с reload=False чтобы контролировать перезапуск вручную
-    uvicorn.run("app:app", host=HOST, port=PORT, reload=False)
+    while True:
+        # Запускаем uvicorn и ждём завершения
+        try:
+            uvicorn.run("app:app", host=HOST, port=PORT, reload=False)
+        except SystemExit as e:
+            # Проверяем код выхода
+            if e.code == 3:  # Код 3 означает перезапуск
+                print("\n🔄 Получен сигнал перезапуска (код 3)")
+                print("   Перезапуск через 1 секунду...")
+                time.sleep(1)
+                continue  # Перезапускаем цикл
+            else:
+                print(f"\n🛑 Остановка (код {e.code})")
+                break
+        except Exception as e:
+            print(f"\n❌ Ошибка сервера: {e}")
+            break
 
 
 def restart_server():
     """Перезапускает сервер после смены режима."""
-    print("\n🔄 Перезапуск сервера через 2 секунды...")
-    time.sleep(2)
-    
-    # Перезапускаем этот же скрипт
-    import subprocess
-    subprocess.Popen([sys.executable] + sys.argv, env=os.environ)
-    sys.exit(0)
+    print("\n🔄 Перезапуск сервера...")
+    # Просто выходим с кодом 3 - run_server() перехватит это
+    import sys
+    sys.exit(3)
 
 
 # Обработчик сигнала для перезапуска
 def signal_handler(signum, frame):
     """Обрабатывает сигналы для перезапуска."""
     if signum == signal.SIGTERM:
-        print("\n🔄 Получен сигнал перезапуска...")
+        print("\n🔄 Получен сигнал SIGTERM...")
         restart_server()
+    elif signum == signal.SIGINT:
+        print("\n🛑 Остановка сервера (Ctrl+C)...")
+        sys.exit(0)
     else:
-        print("\n🛑 Остановка сервера...")
+        print(f"\n❓ Неизвестный сигнал: {signum}")
         sys.exit(0)
 
 
