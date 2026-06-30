@@ -81,7 +81,9 @@ async function loadModels() {
   });
 
   try {
-    const res = await fetch(`${API}/models`);
+    // Добавляем timestamp чтобы избежать кэширования
+    const timestamp = new Date().getTime();
+    const res = await fetch(`${API}/models?t=${timestamp}`);
     console.log('[loadModels] status:', res.status);
 
     if (!res.ok) throw new Error('Сервер вернул ошибку: ' + res.status);
@@ -89,10 +91,21 @@ async function loadModels() {
     const data = await res.json();
     console.log('[loadModels] моделей всего:', data.available_models?.length);
     console.log('[loadModels] активных моделей:', data.active_models?.length);
+    console.log('[loadModels] текущий режим:', data.current_mode);
 
     availableModels = data.available_models || [];
     const activeModels = data.active_models || [];
     currentPipelineConfig = data.pipeline_config || {};
+
+    // Устанавливаем переключатель режима согласно ответу сервера
+    const currentMode = data.current_mode || 'remote';
+    const modeRadio = document.querySelector(`input[name="ollamaMode"][value="${currentMode}"]`);
+    if (modeRadio) {
+      modeRadio.checked = true;
+      console.log('[loadModels] Режим установлен:', currentMode);
+    } else {
+      console.warn('[loadModels] Не найден radio для режима:', currentMode);
+    }
 
     // Устанавливаем режим из ответа сервера
     const currentMode = data.current_mode || 'remote';
@@ -154,7 +167,7 @@ async function loadModels() {
     });
   }
 }
-
+  
 // ============ Проверка подключения ============
 async function checkConnection() {
   const statusDiv = $('connectionStatus');
@@ -194,7 +207,7 @@ function validateModels() {
   clearValidationError();
   return true;
 }
-
+  
 // ============ Обзор папок ============
 function initBrowseModal() {
   if (!browseModalInstance) {
@@ -733,7 +746,7 @@ function bindEventHandlers() {
     refreshBtn.onclick = async () => {
       refreshBtn.disabled = true;
       refreshBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Загрузка...';
-      await loadModels();
+      await loadModels();  // loadModels теперь читает актуальный режим
       refreshBtn.disabled = false;
       refreshBtn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Обновить список моделей';
     };
@@ -1098,11 +1111,13 @@ async function applyModeChange() {
     if (res.ok) {
       console.log('[applyModeChange] Успех:', data.message);
       btn.innerHTML = '<i class="bi bi-check me-1"></i>Готово! Обновление...';
-      // Ждём немного и обновляем страницу
+      
+      // Ждём пока сервер перезапустится и обновляем страницу
+      // После обновления loadModels() загрузит правильный список моделей
       setTimeout(() => {
         console.log('[applyModeChange] Перезагрузка страницы...');
         location.reload();
-      }, 2500);
+      }, 3000); // Увеличили до 3 секунд чтобы сервер успел стартовать
     } else {
       console.error('[applyModeChange] Ошибка:', data);
       throw new Error(data.detail || 'Ошибка смены режима');

@@ -528,18 +528,42 @@ async def get_available_models():
         except Exception as e:
             print(f"[API/MODELS] Ошибка чтения режима: {e}")
         
+        print(f"\n📥 [API/MODELS] Запрос моделей, режим: {current_mode.upper()}")
+        
         # Определяем конфигурацию в зависимости от режима
         if current_mode == "local":
             from config_local import ollama_local_config
             current_config = ollama_local_config
+            print(f"   Используем конфиг: local ({current_config.base_url})")
         else:
             from config import ollama_config
             current_config = ollama_config
+            print(f"   Используем конфиг: remote ({current_config.base_url})")
         
-        ollama = OllamaClient()
+        # Создаём клиент с правильной конфигурацией
+        from core import OllamaModelConfig
+        model_config = OllamaModelConfig(
+            translate_model="",
+            annotate_model="",
+            review_model=""
+        )
+        
+        if current_mode == "local":
+            from core.ollama_local import OllamaLocalClient
+            ollama = OllamaLocalClient(
+                base_url=current_config.base_url,
+                config=model_config
+            )
+        else:
+            from core.ollama_models import OllamaClient
+            ollama = OllamaClient(
+                base_url=current_config.base_url,
+                config=model_config
+            )
         
         # Получаем ВСЕ скачанные модели (это быстро)
         available = ollama.get_available_models()
+        print(f"   Найдено моделей: {len(available)}")
         
         # Получаем активные модели (может быть медленно или недоступно)
         # Если не получилось - не ломаем всё, возвращаем пустой список
@@ -561,7 +585,7 @@ async def get_available_models():
             }
         }
     except Exception as e:
-        print(f"Ошибка в /api/models: {e}")
+        print(f"❌ Ошибка в /api/models: {e}")
         import traceback
         traceback.print_exc()
         return {
