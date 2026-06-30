@@ -107,13 +107,6 @@ async function loadModels() {
       console.warn('[loadModels] Не найден radio для режима:', currentMode);
     }
 
-    // Устанавливаем режим из ответа сервера
-    const currentMode = data.current_mode || 'remote';
-    const modeRadio = document.querySelector(`input[name="ollamaMode"][value="${currentMode}"]`);
-    if (modeRadio) {
-      modeRadio.checked = true;
-    }
-
     const populateSelect = (selectId) => {
       const select = $(selectId);
       if (!select) return;
