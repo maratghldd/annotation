@@ -1,6 +1,7 @@
 """FastAPI web application for document analysis."""
 import io
 import os
+import sys
 import uuid
 import asyncio
 import time
@@ -947,15 +948,15 @@ async def change_mode(req: ChangeModeRequest):
         print(f"🔄 [CHANGE-MODE] Смена режима: {OLLAMA_MODE} → {mode}")
         print("   Сервер будет перезапущен через 2 секунды...\n")
         
-        # Планируем перезапуск сервера
-        def restart_server():
+        # Планируем перезапуск uvicorn
+        def restart_uvicorn():
             time.sleep(2)  # Даём время на отправку ответа клиенту
-            print("🔁 [CHANGE-MODE] Выполняется перезапуск (os._exit)...")
-            # Принудительно завершаем процесс - run.py перехватит это и перезапустится
-            os._exit(3)  # Код выхода 3 означает "перезапуск"
+            print("🔁 [CHANGE-MODE] Выполняется перезапуск uvicorn...")
+            # Завершаем uvicorn с кодом 3 — run.py перехватит и перезапустит
+            os._exit(3)  # Немедленное завершение процесса с кодом 3
         
         # Запускаем перезапуск в фоне
-        threading.Thread(target=restart_server, daemon=True).start()
+        threading.Thread(target=restart_uvicorn, daemon=True).start()
         
         return {
             "ok": True,

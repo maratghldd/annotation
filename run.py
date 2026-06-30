@@ -9,7 +9,7 @@ import json
 import webbrowser
 import threading
 import time
-import signal
+import subprocess
 
 # Проверяем, что используем правильный Python
 if sys.version_info >= (3, 14):
@@ -24,7 +24,6 @@ if sys.version_info >= (3, 14):
 # Можно временно переопределить здесь для отладки:
 OLLAMA_MODE_OVERRIDE = None  # "local" или "remote" или None (читать из файла)
 
-import json
 MODE_CONFIG_FILE = "mode_config.json"
 
 def load_ollama_mode():
@@ -112,58 +111,53 @@ def open_browser():
 
 
 def run_server():
-    """Запускает сервер uvicorn."""
+    """Запускает сервер uvicorn как subprocess и перезапускает при необходимости."""
     HOST = "127.0.0.1"
     PORT = 8000
-    print("\n🚀 Сервер запускается...")
+
+    print("\n🚀 Запуск сервера...")
     print(f"  http://{HOST}:{PORT}")
     print("Остановка: Ctrl+C\n")
     
-    while True:
-        # Запускаем uvicorn и ждём завершения
-        try:
-            uvicorn.run("app:app", host=HOST, port=PORT, reload=False)
-        except SystemExit as e:
+    uvicorn_process = None
+    
+    try:
+        while True:
+            # Читаем текущий режим
+            current_mode = load_ollama_mode()
+            print(f"📍 Режим: {current_mode.upper()}")
+            
+            # Запускаем uvicorn как subprocess
+            uvicorn_process = subprocess.Popen(
+                [sys.executable, "-m", "uvicorn", "app:app", "--host", HOST, "--port", str(PORT)],
+                env=os.environ
+            )
+            
+            # Ждём завершения subprocess
+            uvicorn_process.wait()
+            
             # Проверяем код выхода
-            if e.code == 3:  # Код 3 означает перезапуск
+            exit_code = uvicorn_process.returncode
+            
+            if exit_code == 3:  # Код 3 означает перезапуск
                 print("\n🔄 Получен сигнал перезапуска (код 3)")
                 print("   Перезапуск через 1 секунду...")
                 time.sleep(1)
                 continue  # Перезапускаем цикл
             else:
-                print(f"\n🛑 Остановка (код {e.code})")
+                print(f"\n🛑 Сервер остановлен (код {exit_code})")
                 break
-        except Exception as e:
-            print(f"\n❌ Ошибка сервера: {e}")
-            break
-
-
-def restart_server():
-    """Перезапускает сервер после смены режима."""
-    print("\n🔄 Перезапуск сервера...")
-    # Просто выходим с кодом 3 - run_server() перехватит это
-    import sys
-    sys.exit(3)
-
-
-# Обработчик сигнала для перезапуска
-def signal_handler(signum, frame):
-    """Обрабатывает сигналы для перезапуска."""
-    if signum == signal.SIGTERM:
-        print("\n🔄 Получен сигнал SIGTERM...")
-        restart_server()
-    elif signum == signal.SIGINT:
-        print("\n🛑 Остановка сервера (Ctrl+C)...")
-        sys.exit(0)
-    else:
-        print(f"\n❓ Неизвестный сигнал: {signum}")
-        sys.exit(0)
+                
+    except KeyboardInterrupt:
+        print("\n🛑 Остановка пользователем (Ctrl+C)...")
+    finally:
+        # Убиваем процесс если ещё жив
+        if uvicorn_process and uvicorn_process.poll() is None:
+            uvicorn_process.terminate()
+            uvicorn_process.wait()
+        print("   Готово.")
 
 
 if __name__ == "__main__":
-    # Регистрируем обработчики сигналов
-    signal.signal(signal.SIGTERM, signal_handler)
-    signal.signal(signal.SIGINT, signal_handler)
-    
     threading.Thread(target=open_browser, daemon=True).start()
     run_server()
