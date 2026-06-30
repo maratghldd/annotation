@@ -532,41 +532,39 @@ async def get_available_models():
         
         # Определяем конфигурацию в зависимости от режима
         if current_mode == "local":
-            from config_local import ollama_local_config
+            from config_local import ollama_local_config, local_pipeline_config
             current_config = ollama_local_config
+            current_pipe_config = local_pipeline_config
+            from core.ollama_local import OllamaLocalClient
+            ClientClass = OllamaLocalClient
             print(f"   Используем конфиг: local ({current_config.base_url})")
         else:
-            from config import ollama_config
+            from config import ollama_config, pipeline_config
             current_config = ollama_config
+            current_pipe_config = pipeline_config
+            from core.ollama_models import OllamaClient
+            ClientClass = OllamaClient
             print(f"   Используем конфиг: remote ({current_config.base_url})")
         
-        # Создаём клиент с правильной конфигурацией
+        # Создаём клиент
         from core import OllamaModelConfig
         model_config = OllamaModelConfig(
-            translate_model="",
-            annotate_model="",
-            review_model=""
+            translate_model="test",
+            annotate_model="test",
+            review_model="test"
         )
         
-        if current_mode == "local":
-            from core.ollama_local import OllamaLocalClient
-            ollama = OllamaLocalClient(
-                base_url=current_config.base_url,
-                config=model_config
-            )
-        else:
-            from core.ollama_models import OllamaClient
-            ollama = OllamaClient(
-                base_url=current_config.base_url,
-                config=model_config
-            )
-        
+        ollama = ClientClass(
+            base_url=current_config.base_url,
+            config=model_config,
+            pipeline_config=current_pipe_config
+        )
+
         # Получаем ВСЕ скачанные модели (это быстро)
         available = ollama.get_available_models()
         print(f"   Найдено моделей: {len(available)}")
         
         # Получаем активные модели (может быть медленно или недоступно)
-        # Если не получилось - не ломаем всё, возвращаем пустой список
         try:
             active = ollama.get_active_models()
         except Exception as e:
@@ -577,11 +575,11 @@ async def get_available_models():
             "available_models": available,
             "active_models": active,
             "base_url": current_config.base_url,
-            "current_mode": current_mode,  # Возвращаем актуальный режим из файла
+            "current_mode": current_mode,
             "pipeline_config": {
-                "enable_translation": pipeline_config.enable_translation,
-                "enable_annotation": pipeline_config.enable_annotation,
-                "enable_review": pipeline_config.enable_review,
+                "enable_translation": current_pipe_config.enable_translation,
+                "enable_annotation": current_pipe_config.enable_annotation,
+                "enable_review": current_pipe_config.enable_review,
             }
         }
     except Exception as e:
@@ -591,7 +589,7 @@ async def get_available_models():
         return {
             "available_models": [],
             "active_models": [],
-            "base_url": ollama_config.base_url,
+            "base_url": "http://localhost:11434",
             "current_mode": "remote",
             "pipeline_config": {},
             "error": str(e)
