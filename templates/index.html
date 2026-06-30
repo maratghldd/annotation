@@ -331,6 +331,21 @@
           </div>
           <div class="collapse show" id="modelSettings">
             <div class="card-body">
+              <!-- Переключатель режима Local/Remote -->
+              <div class="mb-3">
+                <label class="form-label">Режим работы Ollama</label>
+                <div class="btn-group w-100" role="group">
+                  <input type="radio" class="btn-check" name="ollamaMode" id="modeRemote" value="remote" checked>
+                  <label class="btn btn-outline-primary" for="modeRemote">Удаленный (Remote)</label>
+
+                  <input type="radio" class="btn-check" name="ollamaMode" id="modeLocal" value="local">
+                  <label class="btn btn-outline-primary" for="modeLocal">Локальный (Local)</label>
+                </div>
+                <div class="form-text">
+                  Local — для работы с моделями на вашем ПК. Remote — для подключения к внешнему серверу.
+                </div>
+              </div>
+              
               <div class="row g-3 mb-3">
                 <div class="col-md-4">
                   <label class="form-label">Модель перевода <small class="text-muted">(укранский → русский)</small></label>

@@ -94,6 +94,13 @@ async function loadModels() {
     const activeModels = data.active_models || [];
     currentPipelineConfig = data.pipeline_config || {};
 
+    // Устанавливаем режим из ответа сервера
+    const currentMode = data.current_mode || 'remote';
+    const modeRadio = document.querySelector(`input[name="ollamaMode"][value="${currentMode}"]`);
+    if (modeRadio) {
+      modeRadio.checked = true;
+    }
+
     const populateSelect = (selectId) => {
       const select = $(selectId);
       if (!select) return;
@@ -258,6 +265,9 @@ async function runFolderAnalysis() {
   $('progressBar').classList.add('progress-bar-animated');
 
   try {
+    // Получаем выбранный режим
+    const ollamaMode = document.querySelector('input[name="ollamaMode"]:checked')?.value || 'remote';
+    
     const res = await fetch(`${API}/analyze-folder`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -269,6 +279,7 @@ async function runFolderAnalysis() {
         review_model: $('reviewModel').value,
         enable_translation: $('enableTranslation').checked,
         enable_review: $('enableReview').checked,
+        mode: ollamaMode,  // Передаем режим
         // Параметры из режима разработчика
         max_annotation_chars: parseInt($('maxAnnotationChars').value) || 800,
         max_review_iterations: parseInt($('maxReviewIterations').value) || 2
@@ -366,6 +377,9 @@ async function stopFolderAnalysis() {
 async function handleFile(file) {
   if (!validateModels()) return;
   
+  // Получаем выбранный режим
+  const ollamaMode = document.querySelector('input[name="ollamaMode"]:checked')?.value || 'remote';
+  
   const ext = (file.name || '').toLowerCase();
   if (!['.docx', '.doc', '.pdf'].some(e => ext.endsWith(e))) {
     return showValidationError('Поддерживаются только .docx, .doc, .pdf');
@@ -376,6 +390,7 @@ async function handleFile(file) {
   fd.append('translate_model', $('translateModel').value);
   fd.append('annotate_model', $('annotateModel').value);
   fd.append('review_model', $('reviewModel').value);
+  fd.append('mode', ollamaMode);  // Передаем режим
   // Передаём параметры из режима разработчика
   fd.append('max_annotation_chars', $('maxAnnotationChars').value || 800);
   fd.append('max_review_iterations', $('maxReviewIterations').value || 2);
@@ -575,6 +590,9 @@ async function doRegenerate(btn) {
   const fileName = btn.dataset.fileName || btn.dataset.originalName;
   if (!currentTaskId || !fileName) return;
   
+  // Получаем выбранный режим
+  const ollamaMode = document.querySelector('input[name="ollamaMode"]:checked')?.value || 'remote';
+  
   const origHtml = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
@@ -588,7 +606,8 @@ async function doRegenerate(btn) {
         file_name: fileName,
         translate_model: $('translateModel').value,
         annotate_model: $('annotateModel').value,
-        review_model: $('reviewModel').value
+        review_model: $('reviewModel').value,
+        mode: ollamaMode  // Передаем режим
       })
     });
     const data = await res.json();
@@ -616,6 +635,9 @@ async function fixReviewIssues(fileName) {
   if (!currentTaskId || !fileName) return;
   if (!validateModels()) return;
   
+  // Получаем выбранный режим
+  const ollamaMode = document.querySelector('input[name="ollamaMode"]:checked')?.value || 'remote';
+  
   const row = document.querySelector(`tr[data-file="${fileName.replace(/"/g, '&quot;')}"]`);
   const fixBtn = row?.querySelector('.fix-review-btn');
   if (!fixBtn) return;
@@ -633,7 +655,8 @@ async function fixReviewIssues(fileName) {
         file_name: fileName,
         translate_model: $('translateModel').value,
         annotate_model: $('annotateModel').value,
-        review_model: $('reviewModel').value
+        review_model: $('reviewModel').value,
+        mode: ollamaMode  // Передаем режим
       })
     });
     const data = await res.json();

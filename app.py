@@ -66,7 +66,8 @@ def run_folder_analysis_task(
     enable_annotation: Optional[bool] = None,
     enable_review: Optional[bool] = None,
     max_annotation_chars: Optional[int] = None,
-    max_review_iterations: Optional[int] = None
+    max_review_iterations: Optional[int] = None,
+    mode: str = "remote"
 ):
     task_created_files[task_id] = []
     try:
@@ -79,17 +80,35 @@ def run_folder_analysis_task(
         def cancel_check():
             return task_cancelled.get(task_id, False)
 
+        # --- ВЫБОР КОНФИГУРАЦИИ ПО РЕЖИМУ ---
+        if mode == "local":
+            from config_local import ollama_local_config, local_pipeline_config
+            from core.ollama_local import OllamaLocalClient
+            current_ollama_config = ollama_local_config
+            current_pipeline_defaults = local_pipeline_config
+            ClientClass = OllamaLocalClient
+            log_callback = get_log_callback(task_id)
+            log_callback(f"\n🔌 Режим: LOCAL (локальная Ollama)")
+        else:
+            from config import ollama_config, pipeline_config
+            from core.ollama_models import OllamaClient
+            current_ollama_config = ollama_config
+            current_pipeline_defaults = pipeline_config
+            ClientClass = OllamaClient
+            log_callback = get_log_callback(task_id)
+            log_callback(f"\n🔌 Режим: REMOTE (удаленная Ollama)")
+        # ------------------------------------
+
         # Загружаем модели в оперативную память перед началом
-        log_callback = get_log_callback(task_id)
         log_callback("\n🔄 Загрузка моделей в оперативную память...")
         
         # Собираем уникальные модели для загрузки (чтобы не грузить одну модель 3 раза)
         models_to_load = set()
-        if enable_translation if enable_translation is not None else pipeline_config.enable_translation:
+        if enable_translation if enable_translation is not None else current_pipeline_defaults.enable_translation:
             models_to_load.add(translate_model)
-        if enable_annotation if enable_annotation is not None else pipeline_config.enable_annotation:
+        if enable_annotation if enable_annotation is not None else current_pipeline_defaults.enable_annotation:
             models_to_load.add(annotate_model)
-        if enable_review if enable_review is not None else pipeline_config.enable_review:
+        if enable_review if enable_review is not None else current_pipeline_defaults.enable_review:
             models_to_load.add(review_model)
         
         # Загружаем каждую уникальную модель только один раз
@@ -108,9 +127,9 @@ def run_folder_analysis_task(
                     
                     # Увеличиваем таймаут для больших моделей (122B)
                     response = requests.post(
-                        f"{ollama_config.base_url}/api/generate",
+                        f"{current_ollama_config.base_url}/api/generate",
                         json=payload,
-                        verify=ollama_config.verify_ssl,
+                        verify=current_ollama_config.verify_ssl,
                         timeout=(10, 1800)  # 30 минут на генерацию для больших моделей
                     )
                     response.raise_for_status()
@@ -132,19 +151,19 @@ def run_folder_analysis_task(
         
         # Настройка pipeline с новыми параметрами
         pipe_config = PipelineConfig(
-            enable_translation=enable_translation if enable_translation is not None else pipeline_config.enable_translation,
-            enable_annotation=enable_annotation if enable_annotation is not None else pipeline_config.enable_annotation,
-            enable_review=enable_review if enable_review is not None else pipeline_config.enable_review,
-            max_annotation_chars=max_annotation_chars if max_annotation_chars is not None else pipeline_config.max_annotation_chars,
-            max_review_iterations=max_review_iterations if max_review_iterations is not None else pipeline_config.max_review_iterations
+            enable_translation=enable_translation if enable_translation is not None else current_pipeline_defaults.enable_translation,
+            enable_annotation=enable_annotation if enable_annotation is not None else current_pipeline_defaults.enable_annotation,
+            enable_review=enable_review if enable_review is not None else current_pipeline_defaults.enable_review,
+            max_annotation_chars=max_annotation_chars if max_annotation_chars is not None else current_pipeline_defaults.max_annotation_chars,
+            max_review_iterations=max_review_iterations if max_review_iterations is not None else current_pipeline_defaults.max_review_iterations
         )
 
-        ollama_client = OllamaClient(
-            base_url=ollama_config.base_url,
+        ollama_client = ClientClass(
+            base_url=current_ollama_config.base_url,
             config=model_config,
             pipeline_config=pipe_config  # Передаём конфигурацию pipeline
         )
-        
+
         analyzer = DocumentAnalyzer(
             ollama_client=ollama_client,
             log_callback=log_callback,
@@ -227,13 +246,29 @@ def run_single_file_task(
     annotate_model: str,
     review_model: str,
     max_annotation_chars: Optional[int] = None,
-    max_review_iterations: Optional[int] = None
+    max_review_iterations: Optional[int] = None,
+    mode: str = "remote"
 ):
     try:
         tasks[task_id]["status"] = "running"
         output_dir.mkdir(parents=True, exist_ok=True)
         output_dirs[task_id] = output_dir
         source_folders[task_id] = str(file_path.parent)
+
+        # --- ВЫБОР КОНФИГУРАЦИИ ПО РЕЖИМУ ---
+        if mode == "local":
+            from config_local import ollama_local_config, local_pipeline_config
+            from core.ollama_local import OllamaLocalClient
+            current_ollama_config = ollama_local_config
+            current_pipeline_defaults = local_pipeline_config
+            ClientClass = OllamaLocalClient
+        else:
+            from config import ollama_config, pipeline_config
+            from core.ollama_models import OllamaClient
+            current_ollama_config = ollama_config
+            current_pipeline_defaults = pipeline_config
+            ClientClass = OllamaClient
+        # ------------------------------------
 
         # Настройка конфигурации моделей (все модели обязательны)
         model_config = OllamaModelConfig(
@@ -247,13 +282,13 @@ def run_single_file_task(
             enable_translation=True,
             enable_annotation=True,
             enable_review=True,
-            max_annotation_chars=max_annotation_chars if max_annotation_chars is not None else pipeline_config.max_annotation_chars,
-            max_review_iterations=max_review_iterations if max_review_iterations is not None else pipeline_config.max_review_iterations
+            max_annotation_chars=max_annotation_chars if max_annotation_chars is not None else current_pipeline_defaults.max_annotation_chars,
+            max_review_iterations=max_review_iterations if max_review_iterations is not None else current_pipeline_defaults.max_review_iterations
         )
 
         # Используем конфигурацию pipeline с переданными параметрами
-        ollama_client = OllamaClient(
-            base_url=ollama_config.base_url,
+        ollama_client = ClientClass(
+            base_url=current_ollama_config.base_url,
             config=model_config,
             pipeline_config=pipe_config
         )
@@ -316,6 +351,7 @@ class AnalyzeFolderRequest(BaseModel):
     enable_review: Optional[bool] = None
     max_annotation_chars: Optional[int] = None
     max_review_iterations: Optional[int] = None
+    mode: Optional[str] = "remote"
 
     @field_validator('translate_model', 'annotate_model', 'review_model')
     @classmethod
@@ -351,6 +387,7 @@ class RegenerateRequest(BaseModel):
     translate_model: str
     annotate_model: str
     review_model: str
+    mode: Optional[str] = "remote"
 
     @field_validator('translate_model', 'annotate_model', 'review_model')
     @classmethod
@@ -404,7 +441,8 @@ async def analyze_folder(req: AnalyzeFolderRequest, background_tasks: Background
         task_id, source, output,
         req.translate_model, req.annotate_model, req.review_model,
         req.enable_translation, req.enable_annotation, req.enable_review,
-        req.max_annotation_chars, req.max_review_iterations
+        req.max_annotation_chars, req.max_review_iterations,
+        req.mode
     )
     return {"task_id": task_id, "status": "pending"}
 
@@ -416,6 +454,7 @@ async def analyze_file(
     translate_model: Optional[str] = Form(None),
     annotate_model: Optional[str] = Form(None),
     review_model: Optional[str] = Form(None),
+    mode: Optional[str] = Form("remote"),
     max_annotation_chars: Optional[int] = Form(None),
     max_review_iterations: Optional[int] = Form(None)
 ):
@@ -444,7 +483,8 @@ async def analyze_file(
         run_single_file_task,
         task_id, file_path, output_dir,
         translate_model, annotate_model, review_model,
-        max_annotation_chars, max_review_iterations
+        max_annotation_chars, max_review_iterations,
+        mode
     )
     return {"task_id": task_id, "status": "pending"}
 
@@ -464,6 +504,17 @@ async def cancel_task(req: CancelTaskRequest):
 async def get_available_models():
     """Получить список доступных моделей из Ollama."""
     try:
+        # Определяем текущий режим из переменной окружения
+        current_mode = os.environ.get("OLLAMA_MODE", "remote")
+        
+        # Используем конфигурацию в зависимости от режима
+        if current_mode == "local":
+            from config_local import ollama_local_config
+            current_config = ollama_local_config
+        else:
+            from config import ollama_config
+            current_config = ollama_config
+        
         ollama = OllamaClient()
         
         # Получаем ВСЕ скачанные модели (это быстро)
@@ -480,7 +531,8 @@ async def get_available_models():
         return {
             "available_models": available,
             "active_models": active,
-            "base_url": ollama_config.base_url,
+            "base_url": current_config.base_url,
+            "current_mode": current_mode,
             "pipeline_config": {
                 "enable_translation": pipeline_config.enable_translation,
                 "enable_annotation": pipeline_config.enable_annotation,
@@ -495,6 +547,7 @@ async def get_available_models():
             "available_models": [],
             "active_models": [],
             "base_url": ollama_config.base_url,
+            "current_mode": os.environ.get("OLLAMA_MODE", "remote"),
             "pipeline_config": {},
             "error": str(e)
         }
@@ -572,7 +625,20 @@ async def regenerate_title(req: RegenerateRequest):
     if req.task_id not in task_results or req.task_id not in output_dirs:
         raise HTTPException(status_code=404, detail="Задача не найдена")
 
-    from core import OllamaClient, OllamaModelConfig
+    # --- ВЫБОР КОНФИГУРАЦИИ ПО РЕЖИМУ ---
+    if req.mode == "local":
+        from config_local import ollama_local_config
+        from core.ollama_local import OllamaLocalClient
+        current_ollama_config = ollama_local_config
+        ClientClass = OllamaLocalClient
+    else:
+        from config import ollama_config
+        from core.ollama_models import OllamaClient
+        current_ollama_config = ollama_config
+        ClientClass = OllamaClient
+    # ------------------------------------
+
+    from core import OllamaModelConfig
     
     # Настройка моделей (все модели обязательны)
     model_config = OllamaModelConfig(
@@ -581,7 +647,7 @@ async def regenerate_title(req: RegenerateRequest):
         review_model=req.review_model
     )
 
-    ollama = OllamaClient(base_url=ollama_config.base_url, config=model_config)
+    ollama = ClientClass(base_url=current_ollama_config.base_url, config=model_config)
 
     filename = sanitize_filename(req.file_name)
     base = output_dirs[req.task_id]
@@ -636,7 +702,20 @@ async def fix_review(req: RegenerateRequest):
     if req.task_id not in task_results or req.task_id not in output_dirs:
         raise HTTPException(status_code=404, detail="Задача не найдена")
 
-    from core import OllamaClient, OllamaModelConfig
+    # --- ВЫБОР КОНФИГУРАЦИИ ПО РЕЖИМУ ---
+    if req.mode == "local":
+        from config_local import ollama_local_config
+        from core.ollama_local import OllamaLocalClient
+        current_ollama_config = ollama_local_config
+        ClientClass = OllamaLocalClient
+    else:
+        from config import ollama_config
+        from core.ollama_models import OllamaClient
+        current_ollama_config = ollama_config
+        ClientClass = OllamaClient
+    # ------------------------------------
+
+    from core import OllamaModelConfig
     
     model_config = OllamaModelConfig(
         translate_model=req.translate_model,
@@ -644,7 +723,7 @@ async def fix_review(req: RegenerateRequest):
         review_model=req.review_model
     )
 
-    ollama = OllamaClient(base_url=ollama_config.base_url, config=model_config)
+    ollama = ClientClass(base_url=current_ollama_config.base_url, config=model_config)
 
     filename = sanitize_filename(req.file_name)
     base = output_dirs[req.task_id]
