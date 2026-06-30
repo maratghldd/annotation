@@ -5,9 +5,11 @@
 """
 import sys
 import os
+import json
 import webbrowser
 import threading
 import time
+import signal
 
 # Проверяем, что используем правильный Python
 if sys.version_info >= (3, 14):
@@ -18,10 +20,39 @@ if sys.version_info >= (3, 14):
 # ------------------------------------------------------------
 # НАСТРОЙКА ПОДКЛЮЧЕНИЯ К OLLAMA
 # ------------------------------------------------------------
-# Измените эту переменную для переключения:
-#   "remote" — удалённый сервер (ollama.k2.iksi.edu)
-#   "local"  — локальная Ollama на вашем компьютере
-OLLAMA_MODE = "remote"  # ← МЕНЯТЬ ЗДЕСЬ
+# Режим теперь хранится в файле mode_config.json и меняется через веб-интерфейс
+# Можно временно переопределить здесь для отладки:
+OLLAMA_MODE_OVERRIDE = None  # "local" или "remote" или None (читать из файла)
+
+import json
+MODE_CONFIG_FILE = "mode_config.json"
+
+def load_ollama_mode():
+    """Загружает режим из файла конфигурации."""
+    if OLLAMA_MODE_OVERRIDE:
+        return OLLAMA_MODE_OVERRIDE
+    
+    try:
+        with open(MODE_CONFIG_FILE, "r", encoding="utf-8") as f:
+            config = json.load(f)
+            return config.get("ollama_mode", "remote")
+    except FileNotFoundError:
+        # Если файла нет — создаем с режимом по умолчанию
+        save_ollama_mode("remote")
+        return "remote"
+    except Exception as e:
+        print(f"⚠️  Ошибка чтения режима: {e}, используем remote")
+        return "remote"
+
+def save_ollama_mode(mode: str):
+    """Сохраняет режим в файл конфигурации."""
+    try:
+        with open(MODE_CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump({"ollama_mode": mode}, f, indent=4)
+    except Exception as e:
+        print(f"⚠️  Ошибка сохранения режима: {e}")
+
+OLLAMA_MODE = load_ollama_mode()
 
 # Устанавливаем переменную окружения для app.py
 os.environ["OLLAMA_MODE"] = OLLAMA_MODE
@@ -80,11 +111,44 @@ def open_browser():
     webbrowser.open("http://127.0.0.1:8000")
 
 
-if __name__ == "__main__":
+def run_server():
+    """Запускает сервер uvicorn."""
     HOST = "127.0.0.1"
     PORT = 8000
-    print("\nСервер запускается...")
+    print("\n🚀 Сервер запускается...")
     print(f"  http://{HOST}:{PORT}")
     print("Остановка: Ctrl+C\n")
+    
+    # Запускаем uvicorn с reload=False чтобы контролировать перезапуск вручную
+    uvicorn.run("app:app", host=HOST, port=PORT, reload=False)
+
+
+def restart_server():
+    """Перезапускает сервер после смены режима."""
+    print("\n🔄 Перезапуск сервера через 2 секунды...")
+    time.sleep(2)
+    
+    # Перезапускаем этот же скрипт
+    import subprocess
+    subprocess.Popen([sys.executable] + sys.argv, env=os.environ)
+    sys.exit(0)
+
+
+# Обработчик сигнала для перезапуска
+def signal_handler(signum, frame):
+    """Обрабатывает сигналы для перезапуска."""
+    if signum == signal.SIGTERM:
+        print("\n🔄 Получен сигнал перезапуска...")
+        restart_server()
+    else:
+        print("\n🛑 Остановка сервера...")
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    # Регистрируем обработчики сигналов
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    
     threading.Thread(target=open_browser, daemon=True).start()
-    uvicorn.run("app:app", host=HOST, port=PORT)
+    run_server()

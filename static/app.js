@@ -964,6 +964,12 @@ function bindEventHandlers() {
     resetPromptsBtn.onclick = resetPromptsToDefault;
   }
   
+  // Применение смены режима
+  const applyModeBtn = $('applyModeChange');
+  if (applyModeBtn) {
+    applyModeBtn.onclick = applyModeChange;
+  }
+  
   // Загружаем промты при инициализации
   loadPromptsFromServer();
 }
@@ -1053,6 +1059,43 @@ async function savePromptsToServer() {
     showValidationError('Ошибка сохранения: ' + err.message);
     btn.disabled = false;
     btn.innerHTML = origHtml;
+  }
+}
+
+// ============ Смена режима Ollama ============
+async function applyModeChange() {
+  const mode = document.querySelector('input[name="ollamaMode"]:checked')?.value || 'remote';
+  
+  const confirmed = confirm(`Вы выбрали режим "${mode === 'local' ? 'Локальный' : 'Удаленный'}".\n\nСервер будет перезапущен через 2 секунды. Страница автоматически обновится.`);
+  if (!confirmed) return;
+  
+  const btn = $('applyModeChange');
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Перезапуск...';
+  
+  try {
+    const res = await fetch(`${API}/change-mode`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: mode })
+    });
+    
+    const data = await res.json();
+    
+    if (res.ok) {
+      btn.innerHTML = '<i class="bi bi-check me-1"></i>Готово! Обновление...';
+      // Ждём немного и обновляем страницу
+      setTimeout(() => {
+        location.reload();
+      }, 2500);
+    } else {
+      throw new Error(data.detail || 'Ошибка смены режима');
+    }
+  } catch (err) {
+    showValidationError('Ошибка: ' + err.message);
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
   }
 }
 

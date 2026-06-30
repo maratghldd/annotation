@@ -4,13 +4,20 @@ import os
 import uuid
 import asyncio
 import time
+import json
+import signal
+import threading
 import requests
 from pathlib import Path
 from typing import Dict, List, Optional
 from contextlib import asynccontextmanager
 
 # Читаем режим из переменной окружения (устанавливается в run.py)
+import json
+import signal
+
 OLLAMA_MODE = os.environ.get("OLLAMA_MODE", "remote")
+MODE_CONFIG_FILE = "mode_config.json"
 
 if OLLAMA_MODE == "local":
     from config_local import ollama_local_config as ollama_config
@@ -405,6 +412,11 @@ class SavePromptsRequest(BaseModel):
     """Запрос для сохранения промтов."""
     prompts: Optional[dict] = None
     config: Optional[dict] = None
+
+
+class ChangeModeRequest(BaseModel):
+    """Запрос для смены режима Ollama."""
+    mode: str  # "local" или "remote"
 
 
 class GetModelsRequest(BaseModel):
@@ -902,6 +914,43 @@ async def save_prompts(req: SavePromptsRequest):
         return {"ok": True, "message": "Промты сохранены"}
     except Exception as e:
         print(f"Ошибка сохранения промтов: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/change-mode")
+async def change_mode(req: ChangeModeRequest):
+    """Сменить режим работы Ollama (local/remote) и перезапустить сервер."""
+    mode = req.mode.lower()
+    
+    if mode not in ["local", "remote"]:
+        raise HTTPException(status_code=400, detail="Режим должен быть 'local' или 'remote'")
+    
+    try:
+        # Сохраняем новый режим в файл
+        with open(MODE_CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump({"ollama_mode": mode}, f, indent=4)
+        
+        print(f"\n🔄 Смена режима: {OLLAMA_MODE} → {mode}")
+        print("   Сервер будет перезапущен через 2 секунды...\n")
+        
+        # Планируем перезапуск сервера
+        def restart_server():
+            time.sleep(2)  # Даём время на отправку ответа клиенту
+            # Отправляем сигнал перезапуска
+            os.kill(os.getpid(), signal.SIGTERM)
+        
+        # Запускаем перезапуск в фоне
+        threading.Thread(target=restart_server, daemon=True).start()
+        
+        return {
+            "ok": True,
+            "message": f"Режим изменён на '{mode}'. Сервер перезапускается...",
+            "mode": mode
+        }
+    except Exception as e:
+        print(f"Ошибка смены режима: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
