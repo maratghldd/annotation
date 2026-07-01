@@ -6,7 +6,8 @@ from dataclasses import dataclass
 @dataclass
 class OllamaLocalConfig:
     """Конфигурация локальной Ollama."""
-    base_url: str = os.environ.get("OLLAMA_LOCAL_URL", "http://localhost:11434")
+    # Для Docker используем host.docker.internal, для локального запуска - localhost
+    base_url: str = os.environ.get("OLLAMA_LOCAL_URL", "http://host.docker.internal:11434")
     verify_ssl: bool = False  # Локально SSL не нужен
 
 

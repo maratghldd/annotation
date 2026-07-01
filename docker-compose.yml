@@ -1,0 +1,29 @@
+# Docker Compose для Аннотатора документов
+# Версия: 1.0
+
+version: '3.8'
+
+services:
+  annotator:
+    build: .
+    image: annotator:v1
+    container_name: ollama-annotator
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_MODE=local
+    restart: unless-stopped
+    
+    # Для Linux: раскомментируй строку ниже
+    # network_mode: host
+    
+    # Для Windows/Mac: Docker автоматически использует host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    
+    # Логи
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
